@@ -1,0 +1,8 @@
+{"instruction": "What is Fine Tuning as a Service?", "input": "", "output": "FTAAS is a platform that lets users fine-tune open-source LLMs via UI or SDK, with Ray training, MLflow tracking, and managed deployment."}
+{"instruction": "What is LoRA?", "input": "", "output": "LoRA is a parameter-efficient fine-tuning method that injects low-rank adapters into transformer layers."}
+{"instruction": "Name supported frameworks", "input": "", "output": "Hugging Face Transformers, TRL, Verl, LLaMA-Factory, Unsloth, and Axolotl."}
+{"instruction": "What does MDS do?", "input": "", "output": "MDS registers datasets from GCS paths and returns dataset_id:version for training jobs."}
+{"instruction": "How is training orchestrated?", "input": "", "output": "Airflow (or the local runner) downloads data, creates a Ray cluster, submits training, logs to MLflow, and registers the model in MDLC."}
+{"instruction": "What is QLoRA?", "input": "", "output": "QLoRA combines 4-bit quantization with LoRA adapters to fine-tune large models with less GPU memory."}
+{"instruction": "Explain DPO", "input": "", "output": "Direct Preference Optimization aligns models on preferred vs rejected responses without a separate reward model."}
+{"instruction": "What is Cosmos UI?", "input": "", "output": "Cosmos UI is the graphical interface for job setup, dataset management, tracking, and prompting deployed models."}
