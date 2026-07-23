@@ -24,32 +24,32 @@ from .models import (
 )
 
 
-class FTAASClient:
-    """Client for Jobs API + Datasets + Serving."""
+class Client:
+    """Client for control + registry + deploy."""
 
     def __init__(
         self,
-        jobs_url: Optional[str] = None,
-        datasets_url: Optional[str] = None,
-        serving_url: Optional[str] = None,
+        control_url: Optional[str] = None,
+        registry_url: Optional[str] = None,
+        deploy_url: Optional[str] = None,
         timeout: float = 120.0,
     ) -> None:
         s = get_settings()
-        self.jobs_url = (jobs_url or s.jobs_url).rstrip("/")
-        self.datasets_url = (datasets_url or s.datasets_url).rstrip("/")
-        self.serving_url = (serving_url or s.serving_url).rstrip("/")
+        self.control_url = (control_url or s.control_url).rstrip("/")
+        self.registry_url = (registry_url or s.registry_url).rstrip("/")
+        self.deploy_url = (deploy_url or s.deploy_url).rstrip("/")
         self._client = httpx.Client(timeout=timeout)
 
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "FTAASClient":
+    def __enter__(self) -> "Client":
         return self
 
     def __exit__(self, *args: Any) -> None:
         self.close()
 
-    # ---- Datasets ----
+    # ---- Registry ----
     def register_dataset(
         self,
         gcs_path: str,
@@ -60,21 +60,21 @@ class FTAASClient:
         payload = RegisterDatasetRequest(
             gcs_path=gcs_path, name=name, description=description, format=format
         )
-        r = self._client.post(f"{self.datasets_url}/v1/datasets/register", json=payload.model_dump())
+        r = self._client.post(f"{self.registry_url}/v1/datasets/register", json=payload.model_dump())
         r.raise_for_status()
         return DatasetInfo.model_validate(r.json())
 
     def get_dataset(self, dataset_id: str, version: str = "latest") -> DatasetInfo:
-        r = self._client.get(f"{self.datasets_url}/v1/datasets/{dataset_id}", params={"version": version})
+        r = self._client.get(f"{self.registry_url}/v1/datasets/{dataset_id}", params={"version": version})
         r.raise_for_status()
         return DatasetInfo.model_validate(r.json())
 
     def list_datasets(self) -> list[DatasetInfo]:
-        r = self._client.get(f"{self.datasets_url}/v1/datasets")
+        r = self._client.get(f"{self.registry_url}/v1/datasets")
         r.raise_for_status()
         return [DatasetInfo.model_validate(x) for x in r.json()]
 
-    # ---- Jobs ----
+    # ---- Control ----
     def create_finetune_job(
         self,
         model_name: str,
@@ -114,32 +114,32 @@ class FTAASClient:
             tags=tags or {},
         )
         r = self._client.post(
-            f"{self.jobs_url}/v1/jobs/finetune",
+            f"{self.control_url}/v1/jobs/finetune",
             json=payload.model_dump(mode="json"),
         )
         r.raise_for_status()
         return FinetuneJob.model_validate(r.json())
 
     def get_job_status(self, job_id: str) -> FinetuneJob:
-        r = self._client.get(f"{self.jobs_url}/v1/jobs/{job_id}")
+        r = self._client.get(f"{self.control_url}/v1/jobs/{job_id}")
         r.raise_for_status()
         return FinetuneJob.model_validate(r.json())
 
     def list_jobs(self) -> list[FinetuneJob]:
-        r = self._client.get(f"{self.jobs_url}/v1/jobs")
+        r = self._client.get(f"{self.control_url}/v1/jobs")
         r.raise_for_status()
         return [FinetuneJob.model_validate(x) for x in r.json()]
 
     def get_model(self, model_name: str, version: str = "latest") -> ModelInfo:
         r = self._client.get(
-            f"{self.jobs_url}/v1/models/{model_name}",
+            f"{self.control_url}/v1/models/{model_name}",
             params={"version": version},
         )
         r.raise_for_status()
         return ModelInfo.model_validate(r.json())
 
     def list_models(self) -> list[ModelInfo]:
-        r = self._client.get(f"{self.jobs_url}/v1/models")
+        r = self._client.get(f"{self.control_url}/v1/models")
         r.raise_for_status()
         return [ModelInfo.model_validate(x) for x in r.json()]
 
@@ -159,7 +159,7 @@ class FTAASClient:
             time.sleep(poll_seconds)
         raise TimeoutError(f"Job {job_id} did not finish within {timeout_seconds}s")
 
-    # ---- Serving (deploy / eval) ----
+    # ---- Deploy ----
     def create_endpoint(
         self,
         model_name: str,
@@ -174,7 +174,7 @@ class FTAASClient:
             use_adapters=use_adapters,
         )
         r = self._client.post(
-            f"{self.serving_url}/v1/endpoints",
+            f"{self.deploy_url}/v1/endpoints",
             json=payload.model_dump(),
         )
         r.raise_for_status()
@@ -189,21 +189,21 @@ class FTAASClient:
     ) -> PromptResponse:
         payload = PromptRequest(prompt=prompt, max_tokens=max_tokens, temperature=temperature)
         r = self._client.post(
-            f"{self.serving_url}/v1/endpoints/{endpoint_id}/prompt",
+            f"{self.deploy_url}/v1/endpoints/{endpoint_id}/prompt",
             json=payload.model_dump(),
         )
         r.raise_for_status()
         return PromptResponse.model_validate(r.json())
 
     def list_endpoints(self) -> list[EndpointInfo]:
-        r = self._client.get(f"{self.serving_url}/v1/endpoints")
+        r = self._client.get(f"{self.deploy_url}/v1/endpoints")
         r.raise_for_status()
         return [EndpointInfo.model_validate(x) for x in r.json()]
 
     def catalog(self) -> dict[str, Any]:
-        r = self._client.get(f"{self.jobs_url}/v1/catalog")
+        r = self._client.get(f"{self.control_url}/v1/catalog")
         r.raise_for_status()
         return r.json()
 
 
-__all__ = ["FTAASClient"]
+__all__ = ["Client"]

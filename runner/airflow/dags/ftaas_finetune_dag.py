@@ -2,7 +2,7 @@
 Airflow DAG: ftaas_finetune
 
 Mirrors the sequence diagram when airflow.enabled=true.
-For local demo, prefer orchestrator.local_runner.runner.
+For local demo, prefer runner.local.runner.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def _run(**context):
     pipeline_id = conf.get("pipeline_id")
     if not job_id or not pipeline_id:
         raise ValueError("dag_run.conf must include job_id and pipeline_id")
-    from orchestrator.local_runner.runner import run_finetune_pipeline
+    from runner.local.runner import run_finetune_pipeline
 
     run_finetune_pipeline(job_id, pipeline_id)
 

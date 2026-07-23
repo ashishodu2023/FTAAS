@@ -1,4 +1,4 @@
-"""Jobs API — central Fine-Tuning-as-a-Service orchestrator."""
+"""Control — fine-tune job lifecycle and model registry."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from ftaas.models import (
 )
 
 app = FastAPI(
-    title="FTAAS Jobs",
+    title="FTAAS Control",
     version="0.1.0",
     description="Fine Tuning as a Service — job lifecycle, model registry, catalog",
 )
@@ -101,8 +101,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("jobs")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/jobs.db"
+    svc = cfg.services.get("control")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/control.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -111,7 +111,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "jobs"}
+    return {"status": "ok", "service": "control"}
 
 
 @app.get("/v1/catalog")
@@ -156,7 +156,7 @@ async def create_finetune_job(
         )
         await session.commit()
 
-    # create_pipeline via pipelines
+    # create_pipeline via workflow
     pipeline_id = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -166,7 +166,7 @@ async def create_finetune_job(
                 dag_id="ftaas_finetune",
             )
             resp = await client.post(
-                f"{settings.pipelines_url}/v1/pipelines",
+                f"{settings.workflow_url}/v1/pipelines",
                 json=pr.model_dump(mode="json"),
             )
             resp.raise_for_status()
@@ -201,7 +201,7 @@ async def create_finetune_job(
 
 async def _schedule_job(job_id: str, pipeline_id: str) -> None:
     """schedule job according to framework → airflow / local runner."""
-    from orchestrator.local_runner.runner import run_finetune_pipeline
+    from runner.local.runner import run_finetune_pipeline
 
     await asyncio.to_thread(run_finetune_pipeline, job_id, pipeline_id)
 
@@ -393,8 +393,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("jobs").port if cfg.services.get("jobs") else 8000
-    uvicorn.run("jobs.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("control").port if cfg.services.get("control") else 8000
+    uvicorn.run("control.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

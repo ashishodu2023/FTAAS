@@ -1,4 +1,4 @@
-"""Pipelines — creates & tracks fine-tune pipelines (Airflow DAG bindings)."""
+"""Workflow — create & track fine-tune pipelines (Airflow DAG bindings)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from ftaas.models import (
     utcnow,
 )
 
-app = FastAPI(title="FTAAS Pipelines", version="0.1.0")
+app = FastAPI(title="FTAAS Workflow", version="0.1.0")
 
 
 class Base(DeclarativeBase):
@@ -47,8 +47,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("pipelines")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/pipelines.db"
+    svc = cfg.services.get("workflow")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/workflow.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -57,7 +57,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "pipelines"}
+    return {"status": "ok", "service": "workflow"}
 
 
 @app.post("/v1/pipelines", response_model=PipelineInfo)
@@ -84,7 +84,7 @@ async def create_pipeline(req: CreatePipelineRequest) -> PipelineInfo:
         )
         await session.commit()
 
-    # Jobs API schedules the Airflow/local runner after persisting pipeline_id.
+    # Control schedules the runner after persisting pipeline_id.
     return info
 
 
@@ -132,12 +132,12 @@ async def complete_pipeline(pipeline_id: str, status: str = "succeeded") -> Pipe
             updated_at=row.updated_at,
         )
 
-    # Propagate completion to jobs API
+    # Propagate completion to control
     settings = get_settings()
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(
-                f"{settings.jobs_url}/v1/internal/job_complete",
+                f"{settings.control_url}/v1/internal/job_complete",
                 json={"job_id": info.job_id, "status": status},
             )
     except Exception:
@@ -149,8 +149,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("pipelines").port if cfg.services.get("pipelines") else 8002
-    uvicorn.run("pipelines.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("workflow").port if cfg.services.get("workflow") else 8002
+    uvicorn.run("workflow.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

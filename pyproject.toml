@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ftaas"
 version = "0.1.0"
-description = "Fine Tuning as a Service — LLM fine-tuning platform (datasets → train → track → serve)"
+description = "Fine Tuning as a Service — register → train → track → deploy"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
@@ -44,13 +44,13 @@ all = ["ftaas[train,ray]"]
 ftaas = "ftaas.cli:app"
 
 [tool.setuptools.packages.find]
-where = ["packages", "services", "training", "orchestrator", "."]
-include = ["ftaas*", "jobs*", "pipelines*", "datasets*", "serving*", "ftaas_app*", "training*", "orchestrator*", "scripts*", "ui*"]
+where = ["packages", "services", "training", "runner", "."]
+include = ["ftaas*", "control*", "workflow*", "registry*", "deploy*", "ftaas_app*", "training*", "runner*", "scripts*", "ui*"]
 
 [tool.setuptools.package-dir]
 ftaas = "packages/ftaas_sdk/ftaas"
-jobs = "services/jobs"
-pipelines = "services/pipelines"
-datasets = "services/datasets"
-serving = "services/serving"
+control = "services/control"
+workflow = "services/workflow"
+registry = "services/registry"
+deploy = "services/deploy"
 ftaas_app = "services/ftaas_app"

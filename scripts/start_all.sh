@@ -8,10 +8,10 @@ export PYTHONPATH="${ROOT}:${ROOT}/packages/ftaas_sdk:${ROOT}/services:${PYTHONP
 export FTAAS_CONFIG="${FTAAS_CONFIG:-$ROOT/configs/settings.yaml}"
 export FTAAS_DATA_DIR="${FTAAS_DATA_DIR:-$ROOT/data}"
 # All logical services share the unified gateway
-export FTAAS_JOBS_URL="${FTAAS_JOBS_URL:-http://127.0.0.1:8080}"
-export FTAAS_DATASETS_URL="${FTAAS_DATASETS_URL:-http://127.0.0.1:8080}"
-export FTAAS_PIPELINES_URL="${FTAAS_PIPELINES_URL:-http://127.0.0.1:8080}"
-export FTAAS_SERVING_URL="${FTAAS_SERVING_URL:-http://127.0.0.1:8080}"
+export FTAAS_CONTROL_URL="${FTAAS_CONTROL_URL:-http://127.0.0.1:8080}"
+export FTAAS_REGISTRY_URL="${FTAAS_REGISTRY_URL:-http://127.0.0.1:8080}"
+export FTAAS_WORKFLOW_URL="${FTAAS_WORKFLOW_URL:-http://127.0.0.1:8080}"
+export FTAAS_DEPLOY_URL="${FTAAS_DEPLOY_URL:-http://127.0.0.1:8080}"
 
 mkdir -p "$ROOT/data" "$ROOT/logs"
 

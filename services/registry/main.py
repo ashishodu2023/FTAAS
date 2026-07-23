@@ -1,4 +1,4 @@
-"""Datasets service — registration & versioning (GCS/local path → id:version)."""
+"""Registry — dataset registration & versioning (path → id:version)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
 from ftaas.models import DatasetInfo, RegisterDatasetRequest, new_id, utcnow
 
-app = FastAPI(title="FTAAS Datasets", version="0.1.0", description="Dataset registry (GCS path → id:version)")
+app = FastAPI(title="FTAAS Registry", version="0.1.0", description="Dataset registry (GCS path → id:version)")
 
 
 class Base(DeclarativeBase):
@@ -44,7 +44,7 @@ SessionLocal: async_sessionmaker[AsyncSession] | None = None
 
 
 def _resolve_local_path(gcs_path: str, storage_root: Path) -> Path:
-    """Map gs:// or file:// / local paths into the Datasets storage mirror."""
+    """Map gs:// or file:// / local paths into the registry storage mirror."""
     if gcs_path.startswith("gs://"):
         parsed = urlparse(gcs_path)
         rel = Path(parsed.netloc) / parsed.path.lstrip("/")
@@ -99,8 +99,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("datasets")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/datasets.db"
+    svc = cfg.services.get("registry")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/registry.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -109,7 +109,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "datasets"}
+    return {"status": "ok", "service": "registry"}
 
 
 @app.post("/v1/datasets/register", response_model=DatasetInfo)
@@ -117,7 +117,7 @@ async def register_dataset(req: RegisterDatasetRequest) -> DatasetInfo:
     assert SessionLocal is not None
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    storage = Path(cfg.services["datasets"].storage_root) if cfg.services.get("datasets") and cfg.services["datasets"].storage_root else root / "datasets"
+    storage = Path(cfg.services["registry"].storage_root) if cfg.services.get("registry") and cfg.services["registry"].storage_root else root / "datasets"
 
     dataset_id = new_id("ds_")
     version = "1"
@@ -224,8 +224,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("datasets").port if cfg.services.get("datasets") else 8001
-    uvicorn.run("datasets.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("registry").port if cfg.services.get("registry") else 8001
+    uvicorn.run("registry.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

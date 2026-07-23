@@ -13,7 +13,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "packages" / "ftaas_sdk"), str(ROOT / "ser
 from rich.console import Console
 from rich.table import Table
 
-from ftaas import FTAASClient, Framework, Technique, HyperParameters
+from ftaas import Client, Framework, Technique, HyperParameters
 
 console = Console()
 SAMPLE = ROOT / "examples" / "data" / "alpaca_sample.jsonl"
@@ -21,7 +21,7 @@ SAMPLE = ROOT / "examples" / "data" / "alpaca_sample.jsonl"
 
 def main() -> int:
     console.rule("[bold cyan]FTAAS E2E")
-    with FTAASClient() as client:
+    with Client() as client:
         console.print("[bold]1. register_dataset[/]")
         ds = client.register_dataset(
             gcs_path=str(SAMPLE),
@@ -56,7 +56,7 @@ def main() -> int:
         model = client.get_model(model_name)
         console.print(f"  → {model.model_name} v{model.version}  uri={model.model_uri}")
 
-        console.print("[bold]5. create_endpoint (serving)[/]")
+        console.print("[bold]5. create_endpoint (deploy)[/]")
         ep = client.create_endpoint(model_name=model.model_name, inference_framework="vllm")
         console.print(f"  → {ep.endpoint_id}  {ep.url}")
 

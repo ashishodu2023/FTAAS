@@ -1,4 +1,4 @@
-"""Serving — deployment, evaluation, endpoints (vLLM / adapters / Ray Serve)."""
+"""Deploy — endpoints, evaluation path (vLLM / adapters / Ray Serve)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from ftaas.models import (
 )
 
 app = FastAPI(
-    title="FTAAS Serving",
+    title="FTAAS Deploy",
     version="0.1.0",
     description="Create endpoint → inference framework → model deploy → UI/API prompt",
 )
@@ -53,8 +53,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("serving")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/serving.db"
+    svc = cfg.services.get("deploy")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/deploy.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -63,7 +63,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "serving"}
+    return {"status": "ok", "service": "deploy"}
 
 
 @app.post("/v1/endpoints", response_model=EndpointInfo)
@@ -77,7 +77,7 @@ async def create_endpoint(req: CreateEndpointRequest) -> EndpointInfo:
         async with httpx.AsyncClient(timeout=30.0) as client:
             params = {"version": req.model_version or "latest"}
             r = await client.get(
-                f"{settings.jobs_url}/v1/models/{req.model_name}",
+                f"{settings.control_url}/v1/models/{req.model_name}",
                 params=params,
             )
             if r.status_code == 404:
@@ -87,12 +87,12 @@ async def create_endpoint(req: CreateEndpointRequest) -> EndpointInfo:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(502, f"Jobs lookup failed: {exc}") from exc
+        raise HTTPException(502, f"Control lookup failed: {exc}") from exc
 
     endpoint_id = new_id("ep_")
-    # evaluation path uses vllm → adapters → Ray Serve; deployment uses serving API
+    # evaluation path uses vllm → adapters → Ray Serve; deployment uses deploy API
     fw = req.inference_framework
-    url = f"{settings.serving_url.rstrip('/')}/v1/endpoints/{endpoint_id}/prompt"
+    url = f"{settings.deploy_url.rstrip('/')}/v1/endpoints/{endpoint_id}/prompt"
     info = EndpointInfo(
         endpoint_id=endpoint_id,
         model_name=model["model_name"],
@@ -179,8 +179,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("serving").port if cfg.services.get("serving") else 8003
-    uvicorn.run("serving.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("deploy").port if cfg.services.get("deploy") else 8003
+    uvicorn.run("deploy.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

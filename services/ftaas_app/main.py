@@ -1,4 +1,4 @@
-"""Unified FTAAS gateway — one process for datasets, jobs, pipelines, serving, and UI."""
+"""Unified FTAAS gateway — one process for registry, control, workflow, deploy, and console."""
 
 from __future__ import annotations
 
@@ -20,17 +20,17 @@ async def _run_startup(sub: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_data_dirs()
-    for key in ("datasets_app", "jobs_app", "pipelines_app", "serving_app", "web_app"):
+    for key in ("registry_app", "control_app", "workflow_app", "deploy_app", "console_app"):
         await _run_startup(app.state[key])
     yield
 
 
 def create_app() -> FastAPI:
-    from datasets.main import app as datasets_app
-    from jobs.main import app as jobs_app
-    from pipelines.main import app as pipelines_app
-    from serving.main import app as serving_app
-    from ui.web.app import app as web_app
+    from registry.main import app as registry_app
+    from control.main import app as control_app
+    from workflow.main import app as workflow_app
+    from deploy.main import app as deploy_app
+    from ui.console.app import app as console_app
 
     app = FastAPI(
         title="Fine Tuning as a Service",
@@ -38,23 +38,23 @@ def create_app() -> FastAPI:
         description="Unified gateway: dataset → orchestrate → train → track → deploy → UI/API",
         lifespan=lifespan,
     )
-    app.state.datasets_app = datasets_app
-    app.state.jobs_app = jobs_app
-    app.state.pipelines_app = pipelines_app
-    app.state.serving_app = serving_app
-    app.state.web_app = web_app
+    app.state.registry_app = registry_app
+    app.state.control_app = control_app
+    app.state.workflow_app = workflow_app
+    app.state.deploy_app = deploy_app
+    app.state.console_app = console_app
 
     @app.get("/health")
     async def health():
         return {
             "status": "ok",
             "service": "ftaas",
-            "components": ["datasets", "jobs", "pipelines", "serving", "web"],
+            "components": ["registry", "control", "workflow", "deploy", "console"],
         }
 
     skip = {"/docs", "/redoc", "/openapi.json", "/health"}
 
-    for sub in (datasets_app, jobs_app, pipelines_app, serving_app, web_app):
+    for sub in (registry_app, control_app, workflow_app, deploy_app, console_app):
         for route in sub.routes:
             path = getattr(route, "path", None)
             if path in skip:

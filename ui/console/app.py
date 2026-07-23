@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from ftaas.config import get_platform_config, get_settings
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="FTAAS UI — Fine Tuning as a Service")
+app = FastAPI(title="Console — Fine Tuning as a Service")
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 static_dir = ROOT / "static"
 static_dir.mkdir(exist_ok=True)
@@ -23,26 +23,26 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 def _urls():
     s = get_settings()
-    return s.jobs_url, s.datasets_url, s.serving_url
+    return s.control_url, s.registry_url, s.deploy_url
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "web"}
+    return {"status": "ok", "service": "console"}
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    jobs_url, datasets_url, serving_url = _urls()
+    control_url, registry_url, deploy_url = _urls()
     catalog = jobs = datasets = models = endpoints = {}
     err = None
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
-            catalog = (await c.get(f"{jobs_url}/v1/catalog")).json()
-            jobs = (await c.get(f"{jobs_url}/v1/jobs")).json()
-            models = (await c.get(f"{jobs_url}/v1/models")).json()
-            datasets = (await c.get(f"{datasets_url}/v1/datasets")).json()
-            endpoints = (await c.get(f"{serving_url}/v1/endpoints")).json()
+            catalog = (await c.get(f"{control_url}/v1/catalog")).json()
+            jobs = (await c.get(f"{control_url}/v1/jobs")).json()
+            models = (await c.get(f"{control_url}/v1/models")).json()
+            datasets = (await c.get(f"{registry_url}/v1/datasets")).json()
+            endpoints = (await c.get(f"{deploy_url}/v1/endpoints")).json()
     except Exception as e:
         err = str(e)
         catalog = get_platform_config().model_dump()
@@ -68,10 +68,10 @@ async def register_dataset(
     gcs_path: str = Form(...),
     name: Optional[str] = Form(None),
 ):
-    _, datasets_url, _ = _urls()
+    _, registry_url, _ = _urls()
     async with httpx.AsyncClient(timeout=30.0) as c:
         await c.post(
-            f"{datasets_url}/v1/datasets/register",
+            f"{registry_url}/v1/datasets/register",
             json={"gcs_path": gcs_path, "name": name or None, "format": "jsonl"},
         )
     return RedirectResponse("/", status_code=303)
@@ -88,7 +88,7 @@ async def create_job(
     learning_rate: float = Form(2e-4),
     lora_r: int = Form(8),
 ):
-    jobs_url, _, _ = _urls()
+    control_url, _, _ = _urls()
     payload = {
         "model_name": model_name,
         "framework": framework,
@@ -102,7 +102,7 @@ async def create_job(
         },
     }
     async with httpx.AsyncClient(timeout=60.0) as c:
-        await c.post(f"{jobs_url}/v1/jobs/finetune", json=payload)
+        await c.post(f"{control_url}/v1/jobs/finetune", json=payload)
     return RedirectResponse("/", status_code=303)
 
 
@@ -111,10 +111,10 @@ async def deploy(
     model_name: str = Form(...),
     inference_framework: str = Form("vllm"),
 ):
-    _, _, serving_url = _urls()
+    _, _, deploy_url = _urls()
     async with httpx.AsyncClient(timeout=30.0) as c:
         await c.post(
-            f"{serving_url}/v1/endpoints",
+            f"{deploy_url}/v1/endpoints",
             json={
                 "model_name": model_name,
                 "inference_framework": inference_framework,
@@ -126,10 +126,10 @@ async def deploy(
 
 @app.post("/prompt")
 async def prompt(endpoint_id: str = Form(...), prompt: str = Form(...)):
-    _, _, serving_url = _urls()
+    _, _, deploy_url = _urls()
     async with httpx.AsyncClient(timeout=30.0) as c:
         r = await c.post(
-            f"{serving_url}/v1/endpoints/{endpoint_id}/prompt",
+            f"{deploy_url}/v1/endpoints/{endpoint_id}/prompt",
             json={"prompt": prompt},
         )
         r.raise_for_status()
@@ -146,8 +146,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("web").port if cfg.services.get("web") else 8080
-    uvicorn.run("ui.web.app:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("console").port if cfg.services.get("console") else 8080
+    uvicorn.run("ui.console.app:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

@@ -37,10 +37,10 @@ class Settings(BaseSettings):
     env: str = "local"
     config_path: str = str(DEFAULT_CONFIG)
     # Unified gateway (single process). Override only if splitting services.
-    jobs_url: str = "http://127.0.0.1:8080"
-    datasets_url: str = "http://127.0.0.1:8080"
-    pipelines_url: str = "http://127.0.0.1:8080"
-    serving_url: str = "http://127.0.0.1:8080"
+    control_url: str = "http://127.0.0.1:8080"
+    registry_url: str = "http://127.0.0.1:8080"
+    workflow_url: str = "http://127.0.0.1:8080"
+    deploy_url: str = "http://127.0.0.1:8080"
     data_dir: str = str(ROOT / "data")
 
     class Config:

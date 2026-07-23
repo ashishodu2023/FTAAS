@@ -81,25 +81,25 @@ def _mlflow_log(params: dict[str, Any], metrics: dict[str, float], model_uri: st
 
 def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
     settings = get_settings()
-    jobs_url = settings.jobs_url.rstrip("/")
-    datasets_url = settings.datasets_url.rstrip("/")
-    pipes = settings.pipelines_url.rstrip("/")
+    control_url = settings.control_url.rstrip("/")
+    registry_url = settings.registry_url.rstrip("/")
+    workflow_url = settings.workflow_url.rstrip("/")
 
     with httpx.Client(timeout=120.0) as client:
         def set_status(status: str, **extra: Any) -> None:
             client.patch(
-                f"{jobs_url}/v1/jobs/{job_id}/status",
+                f"{control_url}/v1/jobs/{job_id}/status",
                 json={"status": status, **extra},
             ).raise_for_status()
 
         try:
-            job = client.get(f"{jobs_url}/v1/jobs/{job_id}").json()
+            job = client.get(f"{control_url}/v1/jobs/{job_id}").json()
             set_status("running")
 
             # 11. download_dataset(id, version)
             ds = job["dataset"]
             dl = client.get(
-                f"{datasets_url}/v1/datasets/{ds['dataset_id']}/download",
+                f"{registry_url}/v1/datasets/{ds['dataset_id']}/download",
                 params={"version": ds.get("version") or "1"},
             )
             dl.raise_for_status()
@@ -141,10 +141,10 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 metrics=result.metrics,
                 parameters=result.parameters,
             )
-            client.post(f"{jobs_url}/v1/models/register", json=reg.model_dump()).raise_for_status()
+            client.post(f"{control_url}/v1/models/register", json=reg.model_dump()).raise_for_status()
 
             # 24-26. complete pipeline → jobs API updates status
-            client.post(f"{pipes}/v1/pipelines/{pipeline_id}/complete", params={"status": "succeeded"})
+            client.post(f"{workflow_url}/v1/pipelines/{pipeline_id}/complete", params={"status": "succeeded"})
             set_status("succeeded", metrics=result.metrics)
             logger.info("Job %s succeeded (mock=%s)", job_id, result.mock)
 
@@ -152,6 +152,6 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
             logger.error("Job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
             try:
                 set_status("failed", error=str(exc))
-                client.post(f"{pipes}/v1/pipelines/{pipeline_id}/complete", params={"status": "failed"})
+                client.post(f"{workflow_url}/v1/pipelines/{pipeline_id}/complete", params={"status": "failed"})
             except Exception:
                 pass

@@ -7,39 +7,36 @@ services:
   ftaas:
     host: 0.0.0.0
     port: 8080
-  # Logical modules still keep their own SQLite stores (same process)
-  jobs:
+  control:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/jobs.db
-  datasets:
+    db_url: sqlite+aiosqlite:///./data/control.db
+  registry:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/datasets.db
+    db_url: sqlite+aiosqlite:///./data/registry.db
     storage_root: ./data/datasets
-  pipelines:
+  workflow:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/pipelines.db
-  serving:
+    db_url: sqlite+aiosqlite:///./data/workflow.db
+  deploy:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/serving.db
-  web:
+    db_url: sqlite+aiosqlite:///./data/deploy.db
+  console:
     host: 0.0.0.0
     port: 8080
 
 integrations:
   mlflow:
-    # Local sqlite by default (no server). Override with FTAAS_MLFLOW_TRACKING_URI
-    # e.g. http://127.0.0.1:5000 when running the compose mlflow service.
     tracking_uri: sqlite:///./data/mlflow.db
     experiment: ftaas-finetune
   ray:
-    address: auto  # or local
-    mock: true     # set false when a real Ray cluster is available
+    address: auto
+    mock: true
   airflow:
-    enabled: false # local_runner used when false
+    enabled: false
   gcs:
     mock: true
     local_mirror: ./data/gcs_mirror
