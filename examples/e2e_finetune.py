@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end Fine Tuning as a Service demo via MDLC Python SDK."""
+"""End-to-end Fine Tuning as a Service demo via FTAAS SDK."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / "packages" / "mdlc_sdk"), str(ROOT / "services")]
+sys.path[:0] = [str(ROOT), str(ROOT / "packages" / "ftaas_sdk"), str(ROOT / "services")]
 
 from rich.console import Console
 from rich.table import Table
 
-from mdlc import MDLCClient, Framework, Technique, HyperParameters
+from ftaas import FTAASClient, Framework, Technique, HyperParameters
 
 console = Console()
 SAMPLE = ROOT / "examples" / "data" / "alpaca_sample.jsonl"
@@ -21,7 +21,7 @@ SAMPLE = ROOT / "examples" / "data" / "alpaca_sample.jsonl"
 
 def main() -> int:
     console.rule("[bold cyan]FTAAS E2E")
-    with MDLCClient() as client:
+    with FTAASClient() as client:
         console.print("[bold]1. register_dataset[/]")
         ds = client.register_dataset(
             gcs_path=str(SAMPLE),
@@ -56,7 +56,7 @@ def main() -> int:
         model = client.get_model(model_name)
         console.print(f"  → {model.model_name} v{model.version}  uri={model.model_uri}")
 
-        console.print("[bold]5. create_endpoint (Aimlopsserv)[/]")
+        console.print("[bold]5. create_endpoint (serving)[/]")
         ep = client.create_endpoint(model_name=model.model_name, inference_framework="vllm")
         console.print(f"  → {ep.endpoint_id}  {ep.url}")
 

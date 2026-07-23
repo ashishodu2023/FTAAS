@@ -7,8 +7,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from mdlc.config import get_platform_config
-from mdlc.models import Framework, HyperParameters, Technique
+from ftaas.config import get_platform_config
+from ftaas.models import Framework, HyperParameters, Technique
 from training.frameworks.registry import TrainResult, get_trainer
 
 
@@ -63,7 +63,7 @@ def submit_training_job(
     framework: Framework | str,
     technique: Technique | str,
     params: HyperParameters,
-    mdlc_job_id: str,
+    job_id_ref: str,
 ) -> RayJobHandle:
     handle = RayJobHandle(job_id=f"rayjob_{uuid.uuid4().hex[:10]}", cluster_name=cluster_name, status="RUNNING")
     _JOBS[handle.job_id] = {
@@ -73,7 +73,7 @@ def submit_training_job(
         "framework": framework,
         "technique": technique,
         "params": params,
-        "mdlc_job_id": mdlc_job_id,
+        "job_id_ref": job_id_ref,
         "result": None,
         "error": None,
     }
@@ -94,13 +94,13 @@ def submit_training_job(
                 dataset_path,
                 str(technique),
                 params.model_dump(),
-                mdlc_job_id,
+                job_id_ref,
             )
             result: TrainResult = ray.get(ref)
         else:
             trainer = get_trainer(framework)
             tech = Technique(technique) if isinstance(technique, str) else technique
-            result = trainer.train(model_name, dataset_path, tech, params, mdlc_job_id)
+            result = trainer.train(model_name, dataset_path, tech, params, job_id_ref)
         _JOBS[handle.job_id]["result"] = result
         handle.status = "SUCCEEDED"
     except Exception as exc:

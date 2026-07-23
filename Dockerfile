@@ -9,5 +9,5 @@ RUN pip install --no-cache-dir \
     python-multipart jinja2 aiofiles pyyaml rich typer tenacity mlflow
 
 COPY . .
-ENV PYTHONPATH=/app:/app/packages/mdlc_sdk:/app/services
+ENV PYTHONPATH=/app:/app/packages/ftaas_sdk:/app/services
 ENV FTAAS_DATA_DIR=/data

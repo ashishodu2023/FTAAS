@@ -1,4 +1,4 @@
-"""AIML MDLC Serv — central Fine-Tuning-as-a-Service orchestrator."""
+"""Jobs API — central Fine-Tuning-as-a-Service orchestrator."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from sqlalchemy import JSON, DateTime, Integer, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mdlc.config import ensure_data_dirs, get_platform_config, get_settings
-from mdlc.models import (
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.models import (
     CreateFinetuneJobRequest,
     CreatePipelineRequest,
     FinetuneJob,
@@ -26,7 +26,7 @@ from mdlc.models import (
 )
 
 app = FastAPI(
-    title="AIML MDLC Serv",
+    title="FTAAS Jobs",
     version="0.1.0",
     description="Fine Tuning as a Service — job lifecycle, model registry, catalog",
 )
@@ -101,8 +101,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("mdlc_server")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/mdlc.db"
+    svc = cfg.services.get("jobs")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/jobs.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -111,7 +111,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "mdlc_server"}
+    return {"status": "ok", "service": "jobs"}
 
 
 @app.get("/v1/catalog")
@@ -136,7 +136,7 @@ async def create_finetune_job(
     req: CreateFinetuneJobRequest,
     background: BackgroundTasks,
 ) -> FinetuneJob:
-    """CosmosUI → create_finetune_job(model, framework, dataset, parameters)."""
+    """UI/SDK → create_finetune_job(model, framework, dataset, parameters)."""
     assert SessionLocal is not None
     settings = get_settings()
     job_id = new_id("job_")
@@ -156,7 +156,7 @@ async def create_finetune_job(
         )
         await session.commit()
 
-    # create_pipeline via pipelineserv
+    # create_pipeline via pipelines
     pipeline_id = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -166,7 +166,7 @@ async def create_finetune_job(
                 dag_id="ftaas_finetune",
             )
             resp = await client.post(
-                f"{settings.pipelineserv_url}/v1/pipelines",
+                f"{settings.pipelines_url}/v1/pipelines",
                 json=pr.model_dump(mode="json"),
             )
             resp.raise_for_status()
@@ -393,8 +393,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("mdlc_server").port if cfg.services.get("mdlc_server") else 8000
-    uvicorn.run("mdlc_server.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("jobs").port if cfg.services.get("jobs") else 8000
+    uvicorn.run("jobs.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

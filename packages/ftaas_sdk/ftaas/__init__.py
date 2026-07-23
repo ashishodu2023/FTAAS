@@ -1,6 +1,6 @@
-"""MDLC Python SDK for Fine Tuning as a Service."""
+"""FTAAS Python SDK for Fine Tuning as a Service."""
 
-from .client import MDLCClient
+from .client import FTAASClient
 from .models import (
     CreateFinetuneJobRequest,
     DatasetInfo,
@@ -15,7 +15,7 @@ from .models import (
 )
 
 __all__ = [
-    "MDLCClient",
+    "FTAASClient",
     "CreateFinetuneJobRequest",
     "DatasetInfo",
     "DatasetRef",

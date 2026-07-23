@@ -1,21 +1,22 @@
 # Fine Tuning as a Service (FTAAS)
 
-Open-source reference implementation of an end-to-end **Fine Tuning as a Service** platform, mirroring the Cosmos.AI / AIML MDLC architecture:
+End-to-end LLM fine-tuning platform:
+
+**dataset registration → job orchestration → training (HF / TRL / LLaMA-Factory / Unsloth / Axolotl with LoRA / QLoRA / DoRA) → MLflow tracking → vLLM / Ray Serve deployment → API / UI**
 
 ```
-MDLC Python SDK / Jupyter          Cosmos UI
-              \                      /
-               \                    /
-                ▼                  ▼
-              AIML MDLC Serv  (job lifecycle + model registry)
-               /        |        \
-              ▼         ▼         ▼
-        Pipelineserv   MDS    Aimlopsserv
-              |         |         |
-         Apache Airflow |    vLLM / Adapters / Ray Serve
-              |         |         |
-         Ray cluster ←──┘      MLflow
-         LLM Repo
+FTAAS SDK / Jupyter              FTAAS UI
+              \                    /
+               \                  /
+                ▼                ▼
+              FTAAS gateway  (:8080)
+         ┌─────────┼─────────┐
+         ▼         ▼         ▼
+     Datasets    Jobs     Serving
+         │         │         │
+         │    Pipelines      │
+         │         │         │
+         └────► Runner / Ray / MLflow / vLLM
 ```
 
 ## What you get
@@ -23,10 +24,12 @@ MDLC Python SDK / Jupyter          Cosmos UI
 | Layer | Component | Role |
 |-------|-----------|------|
 | Gateway | **FTAAS** `:8080` | Single process: UI + all APIs |
-| UI / SDK | Cosmos UI + `mdlc` SDK | Job setup, datasets, tracking, prompt |
-| Orchestration | AIML MDLC Serv | `create_finetune_job`, status, `register_model` |
-| Services | MDS · Pipelineserv · Aimlopsserv | Dataset registry, pipelines, deploy/prompt |
-| Infra | Local runner (Airflow DAG equiv.) · Ray · MLflow | Train → track → register |
+| UI / SDK | Web UI + `ftaas` SDK | Job setup, datasets, tracking, prompt |
+| Jobs | Job lifecycle + model registry | `create_finetune_job`, status, `register_model` |
+| Datasets | Dataset registry | `register_dataset` → `id:version` |
+| Pipelines | Pipeline tracking | `create_pipeline` / complete |
+| Serving | Deploy + prompt | Endpoints (vLLM / Ray Serve path) |
+| Infra | Local runner · Ray · MLflow | Train → track → register |
 
 ### Supported frameworks
 Hugging Face Transformers · TRL · Verl · LLaMA-Factory · Unsloth · Axolotl
@@ -37,52 +40,43 @@ Hugging Face Transformers · TRL · Verl · LLaMA-Factory · Unsloth · Axolotl
 - **Instruction:** SFT, multimodal instruction, Self-Instruct
 - **Alignment:** Reward modeling, PPO, DPO, ORPO
 
-> Real GPU training path uses Transformers + PEFT (LoRA/DoRA/SFT). Other frameworks run in **mock mode** (artifacts + MLflow-compatible metrics) so the full control plane works without a GPU cluster.
+> Real GPU training uses Transformers + PEFT (LoRA/DoRA/SFT). Other frameworks can run in mock mode so the control plane works without a GPU cluster.
 
-## Quick start (local)
+## Quick start
 
 ```bash
-cd /Users/ashishverma/Downloads/FTAAS
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt   # or: pip install fastapi uvicorn ... (see Dockerfile for minimal)
+cd FTAAS
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt   # includes greenlet for async SQLAlchemy
 
 chmod +x scripts/*.sh
 ./scripts/start_all.sh
 ```
 
-Open **http://127.0.0.1:8080** (Cosmos UI).
-
-Run the SDK smoke test:
+Open **http://127.0.0.1:8080**.
 
 ```bash
 ./scripts/e2e_smoke.sh
-```
-
-Stop:
-
-```bash
 ./scripts/stop_all.sh
 ```
 
-## Sequence (matches the architecture diagram)
+## Flow
 
-1. `CosmosUI/SDK` → MDS `register_dataset(gcs_path)` → `dataset_id`, `version`
-2. → MDLC `create_finetune_job(model, framework, dataset, parameters)` → persist → `job_id`
-3. MDLC → Pipelineserv `create_pipeline()` → `pipeline_id`
-4. Schedule Airflow / local runner
-5. Runner: `download_dataset` → `load_parameters` → Ray `create_cluster` → `submit_training_job` → `poll_job_status`
-6. `log_metrics` / `log_parameters` / `log_model` → MLflow
-7. `register_model` → MDLC DB
-8. Pipeline complete → job `succeeded`
-9. UI `get_job_status` / `get_model` → Aimlopsserv deploy → prompt on UI/API
+1. SDK/UI → Datasets `register_dataset(path)` → `dataset_id`, `version`
+2. → Jobs `create_finetune_job(model, framework, dataset, parameters)` → `job_id`
+3. Jobs → Pipelines `create_pipeline()` → `pipeline_id`
+4. Local runner (Airflow-equivalent): download dataset → Ray cluster → train → poll
+5. Log metrics / params / model → MLflow
+6. `register_model` → Jobs registry
+7. Pipeline complete → job `succeeded`
+8. Serving `create_endpoint` → prompt on UI/API
 
-## SDK example
+## SDK
 
 ```python
-from mdlc import MDLCClient, Framework, Technique, HyperParameters
+from ftaas import FTAASClient, Framework, Technique, HyperParameters
 
-with MDLCClient() as c:
+with FTAASClient() as c:
     ds = c.register_dataset("examples/data/alpaca_sample.jsonl", name="alpaca")
     job = c.create_finetune_job(
         model_name="sshleifer/tiny-gpt2",
@@ -97,28 +91,10 @@ with MDLCClient() as c:
     print(c.prompt(ep.endpoint_id, "What is LoRA?").completion)
 ```
 
-CLI:
-
 ```bash
-export PYTHONPATH="$PWD:$PWD/packages/mdlc_sdk:$PWD/services"
-python -m mdlc.cli catalog
-python -m mdlc.cli register-dataset examples/data/alpaca_sample.jsonl --name alpaca
-```
-
-## Phase roadmap (from product milestones)
-
-| Phase | Milestone | Status in this repo |
-|-------|-----------|---------------------|
-| 0 | Fine-Tuning & RL Templates | `training/templates/` |
-| 1 | Fine-Tuning UI | Cosmos UI on unified `:8080` |
-| 2 | Fine-Tune & Evaluate | Jobs + Aimlopsserv endpoints + eval stack API |
-| 3 | Resource Optimization | Planned (catalog stub) |
-| 4 | Sweeps & Optimization | Planned (catalog stub) |
-
-## Docker Compose
-
-```bash
-docker compose up --build
+export PYTHONPATH="$PWD:$PWD/packages/ftaas_sdk:$PWD/services"
+python -m ftaas.cli catalog
+python -m ftaas.cli register-dataset examples/data/alpaca_sample.jsonl --name alpaca
 ```
 
 ## Layout
@@ -126,33 +102,33 @@ docker compose up --build
 ```
 FTAAS/
 ├── configs/settings.yaml
-├── packages/mdlc_sdk/mdlc/     # Python SDK + shared models
+├── packages/ftaas_sdk/ftaas/   # Python SDK + shared models
 ├── services/
 │   ├── ftaas_app/              # Unified gateway (one process)
-│   ├── mdlc_server/            # AIML MDLC Serv
-│   ├── mds/                    # Dataset registry
-│   ├── pipelineserv/
-│   └── aimlopsserv/            # Deploy / prompt
+│   ├── jobs/                   # Job lifecycle + model registry
+│   ├── datasets/               # Dataset registry
+│   ├── pipelines/
+│   └── serving/                # Deploy / prompt
 ├── orchestrator/
-│   ├── local_runner/           # Airflow-equivalent pipeline
-│   └── airflow/dags/           # Optional real Airflow DAG
+│   ├── local_runner/
+│   └── airflow/dags/
 ├── training/
-│   ├── frameworks/             # Framework adapters
-│   ├── ray_jobs/               # Cluster + submit/poll
-│   └── templates/              # Phase 0 YAML templates
-├── ui/cosmos_ui/               # Cosmos UI
-├── examples/                   # Sample data + e2e script
-└── scripts/                    # start / stop / smoke
+│   ├── frameworks/
+│   ├── ray_jobs/
+│   └── templates/
+├── ui/web/
+├── examples/
+└── scripts/
 ```
 
 ## Configuration
 
-Edit `configs/settings.yaml` or set env vars (`FTAAS_` prefix):
+Env vars (`FTAAS_` prefix), all defaulting to the unified gateway:
 
-- `FTAAS_MDLC_URL`, `FTAAS_MDS_URL`, `FTAAS_PIPELINESERV_URL`, `FTAAS_AIMLOPSSERV_URL`
-- `FTAAS_DATA_DIR` — SQLite DBs + datasets + outputs
-- Ray: `integrations.ray.mock: true|false`
-- Airflow: `integrations.airflow.enabled: true` to use the DAG instead of the local runner
+- `FTAAS_JOBS_URL`, `FTAAS_DATASETS_URL`, `FTAAS_PIPELINES_URL`, `FTAAS_SERVING_URL`
+- `FTAAS_DATA_DIR`, `FTAAS_PORT` (default `8080`)
+- Ray: `integrations.ray.mock`
+- Airflow: `integrations.airflow.enabled`
 
 ## License
 

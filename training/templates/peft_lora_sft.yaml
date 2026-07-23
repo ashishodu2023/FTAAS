@@ -1,5 +1,5 @@
 # Phase 0 — Fine-Tuning & RL Templates
-# Run on Cosmos Workbench (single-node or distributed)
+# Run on FTAAS workbench (single-node or distributed)
 
 name: peft_lora_sft
 framework: transformers

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ftaas"
 version = "0.1.0"
-description = "Fine Tuning as a Service — MDLC-backed LLM fine-tuning platform"
+description = "Fine Tuning as a Service — LLM fine-tuning platform (datasets → train → track → serve)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
@@ -41,16 +41,16 @@ ray = ["ray[default]>=2.37.0"]
 all = ["ftaas[train,ray]"]
 
 [project.scripts]
-ftaas = "scripts.cli:app"
-mdlc = "mdlc.cli:app"
+ftaas = "ftaas.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["packages", "services", "training", "orchestrator", "."]
-include = ["mdlc*", "mdlc_server*", "pipelineserv*", "mds*", "aimlopsserv*", "training*", "orchestrator*", "scripts*"]
+include = ["ftaas*", "jobs*", "pipelines*", "datasets*", "serving*", "ftaas_app*", "training*", "orchestrator*", "scripts*", "ui*"]
 
 [tool.setuptools.package-dir]
-mdlc = "packages/mdlc_sdk/mdlc"
-mdlc_server = "services/mdlc_server"
-pipelineserv = "services/pipelineserv"
-mds = "services/mds"
-aimlopsserv = "services/aimlopsserv"
+ftaas = "packages/ftaas_sdk/ftaas"
+jobs = "services/jobs"
+pipelines = "services/pipelines"
+datasets = "services/datasets"
+serving = "services/serving"
+ftaas_app = "services/ftaas_app"

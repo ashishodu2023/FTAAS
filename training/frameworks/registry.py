@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from mdlc.models import Framework, HyperParameters, Technique
+from ftaas.models import Framework, HyperParameters, Technique
 
 
 @dataclass

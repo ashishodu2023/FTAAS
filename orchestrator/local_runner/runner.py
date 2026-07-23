@@ -15,8 +15,8 @@ from typing import Any
 
 import httpx
 
-from mdlc.config import ensure_data_dirs, get_platform_config, get_settings
-from mdlc.models import Framework, HyperParameters, RegisterModelRequest, Technique
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.models import Framework, HyperParameters, RegisterModelRequest, Technique
 from training.ray_jobs.cluster import (
     create_cluster,
     load_parameters,
@@ -81,25 +81,25 @@ def _mlflow_log(params: dict[str, Any], metrics: dict[str, float], model_uri: st
 
 def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
     settings = get_settings()
-    mdlc = settings.mdlc_url.rstrip("/")
-    mds = settings.mds_url.rstrip("/")
-    pipes = settings.pipelineserv_url.rstrip("/")
+    jobs_url = settings.jobs_url.rstrip("/")
+    datasets_url = settings.datasets_url.rstrip("/")
+    pipes = settings.pipelines_url.rstrip("/")
 
     with httpx.Client(timeout=120.0) as client:
         def set_status(status: str, **extra: Any) -> None:
             client.patch(
-                f"{mdlc}/v1/jobs/{job_id}/status",
+                f"{jobs_url}/v1/jobs/{job_id}/status",
                 json={"status": status, **extra},
             ).raise_for_status()
 
         try:
-            job = client.get(f"{mdlc}/v1/jobs/{job_id}").json()
+            job = client.get(f"{jobs_url}/v1/jobs/{job_id}").json()
             set_status("running")
 
             # 11. download_dataset(id, version)
             ds = job["dataset"]
             dl = client.get(
-                f"{mds}/v1/datasets/{ds['dataset_id']}/download",
+                f"{datasets_url}/v1/datasets/{ds['dataset_id']}/download",
                 params={"version": ds.get("version") or "1"},
             )
             dl.raise_for_status()
@@ -121,7 +121,7 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 framework=Framework(job["framework"]),
                 technique=Technique(job["technique"]),
                 params=params,
-                mdlc_job_id=job_id,
+                job_id_ref=job_id,
             )
             result = poll_job_status(handle.job_id)
 
@@ -141,9 +141,9 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 metrics=result.metrics,
                 parameters=result.parameters,
             )
-            client.post(f"{mdlc}/v1/models/register", json=reg.model_dump()).raise_for_status()
+            client.post(f"{jobs_url}/v1/models/register", json=reg.model_dump()).raise_for_status()
 
-            # 24-26. complete pipeline → mdlc updates status
+            # 24-26. complete pipeline → jobs API updates status
             client.post(f"{pipes}/v1/pipelines/{pipeline_id}/complete", params={"status": "succeeded"})
             set_status("succeeded", metrics=result.metrics)
             logger.info("Job %s succeeded (mock=%s)", job_id, result.mock)

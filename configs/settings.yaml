@@ -8,24 +8,24 @@ services:
     host: 0.0.0.0
     port: 8080
   # Logical modules still keep their own SQLite stores (same process)
-  mdlc_server:
+  jobs:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/mdlc.db
-  mds:
+    db_url: sqlite+aiosqlite:///./data/jobs.db
+  datasets:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/mds.db
+    db_url: sqlite+aiosqlite:///./data/datasets.db
     storage_root: ./data/datasets
-  pipelineserv:
+  pipelines:
     host: 0.0.0.0
     port: 8080
     db_url: sqlite+aiosqlite:///./data/pipelines.db
-  aimlopsserv:
+  serving:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/aimlops.db
-  cosmos_ui:
+    db_url: sqlite+aiosqlite:///./data/serving.db
+  web:
     host: 0.0.0.0
     port: 8080
 

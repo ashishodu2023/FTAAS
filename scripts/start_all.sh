@@ -4,14 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-export PYTHONPATH="${ROOT}:${ROOT}/packages/mdlc_sdk:${ROOT}/services:${PYTHONPATH:-}"
+export PYTHONPATH="${ROOT}:${ROOT}/packages/ftaas_sdk:${ROOT}/services:${PYTHONPATH:-}"
 export FTAAS_CONFIG="${FTAAS_CONFIG:-$ROOT/configs/settings.yaml}"
 export FTAAS_DATA_DIR="${FTAAS_DATA_DIR:-$ROOT/data}"
 # All logical services share the unified gateway
-export FTAAS_MDLC_URL="${FTAAS_MDLC_URL:-http://127.0.0.1:8080}"
-export FTAAS_MDS_URL="${FTAAS_MDS_URL:-http://127.0.0.1:8080}"
-export FTAAS_PIPELINESERV_URL="${FTAAS_PIPELINESERV_URL:-http://127.0.0.1:8080}"
-export FTAAS_AIMLOPSSERV_URL="${FTAAS_AIMLOPSSERV_URL:-http://127.0.0.1:8080}"
+export FTAAS_JOBS_URL="${FTAAS_JOBS_URL:-http://127.0.0.1:8080}"
+export FTAAS_DATASETS_URL="${FTAAS_DATASETS_URL:-http://127.0.0.1:8080}"
+export FTAAS_PIPELINES_URL="${FTAAS_PIPELINES_URL:-http://127.0.0.1:8080}"
+export FTAAS_SERVING_URL="${FTAAS_SERVING_URL:-http://127.0.0.1:8080}"
 
 mkdir -p "$ROOT/data" "$ROOT/logs"
 

@@ -1,4 +1,4 @@
-"""FTAAS / MDLC Python SDK — programmatic client for Cosmos Workbench & notebooks."""
+"""FTAAS / FTAAS Python SDK — programmatic client for FTAAS workbench & notebooks."""
 
 from __future__ import annotations
 
@@ -24,32 +24,32 @@ from .models import (
 )
 
 
-class MDLCClient:
-    """Client for AIML MDLC Serv + MDS + Aimlopsserv."""
+class FTAASClient:
+    """Client for Jobs API + Datasets + Serving."""
 
     def __init__(
         self,
-        mdlc_url: Optional[str] = None,
-        mds_url: Optional[str] = None,
-        aimlops_url: Optional[str] = None,
+        jobs_url: Optional[str] = None,
+        datasets_url: Optional[str] = None,
+        serving_url: Optional[str] = None,
         timeout: float = 120.0,
     ) -> None:
         s = get_settings()
-        self.mdlc_url = (mdlc_url or s.mdlc_url).rstrip("/")
-        self.mds_url = (mds_url or s.mds_url).rstrip("/")
-        self.aimlops_url = (aimlops_url or s.aimlopsserv_url).rstrip("/")
+        self.jobs_url = (jobs_url or s.jobs_url).rstrip("/")
+        self.datasets_url = (datasets_url or s.datasets_url).rstrip("/")
+        self.serving_url = (serving_url or s.serving_url).rstrip("/")
         self._client = httpx.Client(timeout=timeout)
 
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "MDLCClient":
+    def __enter__(self) -> "FTAASClient":
         return self
 
     def __exit__(self, *args: Any) -> None:
         self.close()
 
-    # ---- MDS ----
+    # ---- Datasets ----
     def register_dataset(
         self,
         gcs_path: str,
@@ -60,21 +60,21 @@ class MDLCClient:
         payload = RegisterDatasetRequest(
             gcs_path=gcs_path, name=name, description=description, format=format
         )
-        r = self._client.post(f"{self.mds_url}/v1/datasets/register", json=payload.model_dump())
+        r = self._client.post(f"{self.datasets_url}/v1/datasets/register", json=payload.model_dump())
         r.raise_for_status()
         return DatasetInfo.model_validate(r.json())
 
     def get_dataset(self, dataset_id: str, version: str = "latest") -> DatasetInfo:
-        r = self._client.get(f"{self.mds_url}/v1/datasets/{dataset_id}", params={"version": version})
+        r = self._client.get(f"{self.datasets_url}/v1/datasets/{dataset_id}", params={"version": version})
         r.raise_for_status()
         return DatasetInfo.model_validate(r.json())
 
     def list_datasets(self) -> list[DatasetInfo]:
-        r = self._client.get(f"{self.mds_url}/v1/datasets")
+        r = self._client.get(f"{self.datasets_url}/v1/datasets")
         r.raise_for_status()
         return [DatasetInfo.model_validate(x) for x in r.json()]
 
-    # ---- MDLC jobs ----
+    # ---- Jobs ----
     def create_finetune_job(
         self,
         model_name: str,
@@ -114,32 +114,32 @@ class MDLCClient:
             tags=tags or {},
         )
         r = self._client.post(
-            f"{self.mdlc_url}/v1/jobs/finetune",
+            f"{self.jobs_url}/v1/jobs/finetune",
             json=payload.model_dump(mode="json"),
         )
         r.raise_for_status()
         return FinetuneJob.model_validate(r.json())
 
     def get_job_status(self, job_id: str) -> FinetuneJob:
-        r = self._client.get(f"{self.mdlc_url}/v1/jobs/{job_id}")
+        r = self._client.get(f"{self.jobs_url}/v1/jobs/{job_id}")
         r.raise_for_status()
         return FinetuneJob.model_validate(r.json())
 
     def list_jobs(self) -> list[FinetuneJob]:
-        r = self._client.get(f"{self.mdlc_url}/v1/jobs")
+        r = self._client.get(f"{self.jobs_url}/v1/jobs")
         r.raise_for_status()
         return [FinetuneJob.model_validate(x) for x in r.json()]
 
     def get_model(self, model_name: str, version: str = "latest") -> ModelInfo:
         r = self._client.get(
-            f"{self.mdlc_url}/v1/models/{model_name}",
+            f"{self.jobs_url}/v1/models/{model_name}",
             params={"version": version},
         )
         r.raise_for_status()
         return ModelInfo.model_validate(r.json())
 
     def list_models(self) -> list[ModelInfo]:
-        r = self._client.get(f"{self.mdlc_url}/v1/models")
+        r = self._client.get(f"{self.jobs_url}/v1/models")
         r.raise_for_status()
         return [ModelInfo.model_validate(x) for x in r.json()]
 
@@ -159,7 +159,7 @@ class MDLCClient:
             time.sleep(poll_seconds)
         raise TimeoutError(f"Job {job_id} did not finish within {timeout_seconds}s")
 
-    # ---- Aimlopsserv (deploy / eval) ----
+    # ---- Serving (deploy / eval) ----
     def create_endpoint(
         self,
         model_name: str,
@@ -174,7 +174,7 @@ class MDLCClient:
             use_adapters=use_adapters,
         )
         r = self._client.post(
-            f"{self.aimlops_url}/v1/endpoints",
+            f"{self.serving_url}/v1/endpoints",
             json=payload.model_dump(),
         )
         r.raise_for_status()
@@ -189,21 +189,21 @@ class MDLCClient:
     ) -> PromptResponse:
         payload = PromptRequest(prompt=prompt, max_tokens=max_tokens, temperature=temperature)
         r = self._client.post(
-            f"{self.aimlops_url}/v1/endpoints/{endpoint_id}/prompt",
+            f"{self.serving_url}/v1/endpoints/{endpoint_id}/prompt",
             json=payload.model_dump(),
         )
         r.raise_for_status()
         return PromptResponse.model_validate(r.json())
 
     def list_endpoints(self) -> list[EndpointInfo]:
-        r = self._client.get(f"{self.aimlops_url}/v1/endpoints")
+        r = self._client.get(f"{self.serving_url}/v1/endpoints")
         r.raise_for_status()
         return [EndpointInfo.model_validate(x) for x in r.json()]
 
     def catalog(self) -> dict[str, Any]:
-        r = self._client.get(f"{self.mdlc_url}/v1/catalog")
+        r = self._client.get(f"{self.jobs_url}/v1/catalog")
         r.raise_for_status()
         return r.json()
 
 
-__all__ = ["MDLCClient"]
+__all__ = ["FTAASClient"]

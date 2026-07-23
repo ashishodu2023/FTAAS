@@ -2,7 +2,7 @@
 # End-to-end smoke: register dataset → finetune → wait → deploy → prompt
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${ROOT}:${ROOT}/packages/mdlc_sdk:${ROOT}/services:${PYTHONPATH:-}"
+export PYTHONPATH="${ROOT}:${ROOT}/packages/ftaas_sdk:${ROOT}/services:${PYTHONPATH:-}"
 
 if [[ -f "$ROOT/.venv/bin/activate" ]]; then
   # shellcheck disable=SC1091

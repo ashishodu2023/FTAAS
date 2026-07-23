@@ -4,12 +4,12 @@ services:
     command: python -m ftaas_app.main
     ports: ["8080:8080"]
     environment:
-      FTAAS_MDLC_URL: http://127.0.0.1:8080
-      FTAAS_MDS_URL: http://127.0.0.1:8080
-      FTAAS_PIPELINESERV_URL: http://127.0.0.1:8080
-      FTAAS_AIMLOPSSERV_URL: http://127.0.0.1:8080
+      FTAAS_JOBS_URL: http://127.0.0.1:8080
+      FTAAS_DATASETS_URL: http://127.0.0.1:8080
+      FTAAS_PIPELINES_URL: http://127.0.0.1:8080
+      FTAAS_SERVING_URL: http://127.0.0.1:8080
       FTAAS_DATA_DIR: /data
-      PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
+      PYTHONPATH: /app:/app/packages/ftaas_sdk:/app/services
     volumes: ["./data:/data", ".:/app"]
 
   mlflow:

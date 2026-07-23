@@ -1,4 +1,4 @@
-"""Aimlopsserv — deployment, evaluation, endpoints (vLLM / adapters / Ray Serve)."""
+"""Serving — deployment, evaluation, endpoints (vLLM / adapters / Ray Serve)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from sqlalchemy import DateTime, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mdlc.config import ensure_data_dirs, get_platform_config, get_settings
-from mdlc.models import (
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.models import (
     CreateEndpointRequest,
     EndpointInfo,
     PromptRequest,
@@ -22,7 +22,7 @@ from mdlc.models import (
 )
 
 app = FastAPI(
-    title="FTAAS Aimlopsserv",
+    title="FTAAS Serving",
     version="0.1.0",
     description="Create endpoint → inference framework → model deploy → UI/API prompt",
 )
@@ -53,8 +53,8 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("aimlopsserv")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/aimlops.db"
+    svc = cfg.services.get("serving")
+    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/serving.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
@@ -63,7 +63,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "aimlopsserv"}
+    return {"status": "ok", "service": "serving"}
 
 
 @app.post("/v1/endpoints", response_model=EndpointInfo)
@@ -72,27 +72,27 @@ async def create_endpoint(req: CreateEndpointRequest) -> EndpointInfo:
     assert SessionLocal is not None
     settings = get_settings()
 
-    # Resolve model from MDLC registry
+    # Resolve model from Jobs registry
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             params = {"version": req.model_version or "latest"}
             r = await client.get(
-                f"{settings.mdlc_url}/v1/models/{req.model_name}",
+                f"{settings.jobs_url}/v1/models/{req.model_name}",
                 params=params,
             )
             if r.status_code == 404:
-                raise HTTPException(404, f"Model {req.model_name} not registered in MDLC")
+                raise HTTPException(404, f"Model {req.model_name} not registered")
             r.raise_for_status()
             model = r.json()
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(502, f"MDLC lookup failed: {exc}") from exc
+        raise HTTPException(502, f"Jobs lookup failed: {exc}") from exc
 
     endpoint_id = new_id("ep_")
-    # evaluation path uses vllm → adapters → Ray Serve; deployment uses aimlopsserv
+    # evaluation path uses vllm → adapters → Ray Serve; deployment uses serving API
     fw = req.inference_framework
-    url = f"{settings.aimlopsserv_url.rstrip('/')}/v1/endpoints/{endpoint_id}/prompt"
+    url = f"{settings.serving_url.rstrip('/')}/v1/endpoints/{endpoint_id}/prompt"
     info = EndpointInfo(
         endpoint_id=endpoint_id,
         model_name=model["model_name"],
@@ -179,8 +179,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("aimlopsserv").port if cfg.services.get("aimlopsserv") else 8003
-    uvicorn.run("aimlopsserv.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("serving").port if cfg.services.get("serving") else 8003
+    uvicorn.run("serving.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Pipelineserv — creates & tracks fine-tune pipelines (Airflow DAG bindings)."""
+"""Pipelines — creates & tracks fine-tune pipelines (Airflow DAG bindings)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from sqlalchemy import DateTime, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from mdlc.config import ensure_data_dirs, get_platform_config, get_settings
-from mdlc.models import (
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.models import (
     CreatePipelineRequest,
     JobStatus,
     PipelineInfo,
@@ -20,7 +20,7 @@ from mdlc.models import (
     utcnow,
 )
 
-app = FastAPI(title="FTAAS Pipelineserv", version="0.1.0")
+app = FastAPI(title="FTAAS Pipelines", version="0.1.0")
 
 
 class Base(DeclarativeBase):
@@ -47,7 +47,7 @@ async def startup() -> None:
     global engine, SessionLocal
     root = ensure_data_dirs()
     cfg = get_platform_config()
-    svc = cfg.services.get("pipelineserv")
+    svc = cfg.services.get("pipelines")
     db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/pipelines.db"
     engine = create_async_engine(db_url, echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
@@ -57,7 +57,7 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "pipelineserv"}
+    return {"status": "ok", "service": "pipelines"}
 
 
 @app.post("/v1/pipelines", response_model=PipelineInfo)
@@ -84,7 +84,7 @@ async def create_pipeline(req: CreatePipelineRequest) -> PipelineInfo:
         )
         await session.commit()
 
-    # MDLC schedules the Airflow/local runner after persisting pipeline_id.
+    # Jobs API schedules the Airflow/local runner after persisting pipeline_id.
     return info
 
 
@@ -132,12 +132,12 @@ async def complete_pipeline(pipeline_id: str, status: str = "succeeded") -> Pipe
             updated_at=row.updated_at,
         )
 
-    # Propagate completion to mdlc server
+    # Propagate completion to jobs API
     settings = get_settings()
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(
-                f"{settings.mdlc_url}/v1/internal/job_complete",
+                f"{settings.jobs_url}/v1/internal/job_complete",
                 json={"job_id": info.job_id, "status": status},
             )
     except Exception:
@@ -149,8 +149,8 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
-    port = cfg.services.get("pipelineserv").port if cfg.services.get("pipelineserv") else 8002
-    uvicorn.run("pipelineserv.main:app", host="0.0.0.0", port=port, reload=False)
+    port = cfg.services.get("pipelines").port if cfg.services.get("pipelines") else 8002
+    uvicorn.run("pipelines.main:app", host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":
