@@ -49,9 +49,9 @@ async def home(request: Request):
         jobs, datasets, models, endpoints = [], [], [], []
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "catalog": catalog,
             "jobs": jobs,
             "datasets": datasets,
