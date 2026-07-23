@@ -36,10 +36,11 @@ class Integrations(BaseModel):
 class Settings(BaseSettings):
     env: str = "local"
     config_path: str = str(DEFAULT_CONFIG)
-    mdlc_url: str = "http://127.0.0.1:8000"
-    mds_url: str = "http://127.0.0.1:8001"
-    pipelineserv_url: str = "http://127.0.0.1:8002"
-    aimlopsserv_url: str = "http://127.0.0.1:8003"
+    # Unified gateway (single process). Override only if splitting services.
+    mdlc_url: str = "http://127.0.0.1:8080"
+    mds_url: str = "http://127.0.0.1:8080"
+    pipelineserv_url: str = "http://127.0.0.1:8080"
+    aimlopsserv_url: str = "http://127.0.0.1:8080"
     data_dir: str = str(ROOT / "data")
 
     class Config:

@@ -1,60 +1,20 @@
 services:
-  mdlc:
+  ftaas:
     build: .
-    command: python -m mdlc_server.main
-    ports: ["8000:8000"]
-    environment:
-      FTAAS_MDS_URL: http://mds:8001
-      FTAAS_PIPELINESERV_URL: http://pipelineserv:8002
-      FTAAS_AIMLOPSSERV_URL: http://aimlopsserv:8003
-      FTAAS_DATA_DIR: /data
-      PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
-    volumes: ["./data:/data", ".:/app"]
-    depends_on: [mds, pipelineserv, aimlopsserv]
-
-  mds:
-    build: .
-    command: python -m mds.main
-    ports: ["8001:8001"]
-    environment:
-      FTAAS_DATA_DIR: /data
-      PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
-    volumes: ["./data:/data", ".:/app"]
-
-  pipelineserv:
-    build: .
-    command: python -m pipelineserv.main
-    ports: ["8002:8002"]
-    environment:
-      FTAAS_MDLC_URL: http://mdlc:8000
-      FTAAS_DATA_DIR: /data
-      PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
-    volumes: ["./data:/data", ".:/app"]
-
-  aimlopsserv:
-    build: .
-    command: python -m aimlopsserv.main
-    ports: ["8003:8003"]
-    environment:
-      FTAAS_MDLC_URL: http://mdlc:8000
-      FTAAS_DATA_DIR: /data
-      PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
-    volumes: ["./data:/data", ".:/app"]
-
-  cosmos-ui:
-    build: .
-    command: python -c "from ui.cosmos_ui.app import main; main()"
+    command: python -m ftaas_app.main
     ports: ["8080:8080"]
     environment:
-      FTAAS_MDLC_URL: http://mdlc:8000
-      FTAAS_MDS_URL: http://mds:8001
-      FTAAS_AIMLOPSSERV_URL: http://aimlopsserv:8003
+      FTAAS_MDLC_URL: http://127.0.0.1:8080
+      FTAAS_MDS_URL: http://127.0.0.1:8080
+      FTAAS_PIPELINESERV_URL: http://127.0.0.1:8080
+      FTAAS_AIMLOPSSERV_URL: http://127.0.0.1:8080
+      FTAAS_DATA_DIR: /data
       PYTHONPATH: /app:/app/packages/mdlc_sdk:/app/services
-    volumes: [".:/app"]
-    depends_on: [mdlc, mds, aimlopsserv]
+    volumes: ["./data:/data", ".:/app"]
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.17.2
+    profiles: ["mlflow"]
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /mlartifacts
     ports: ["5000:5000"]
     volumes: ["./data/mlartifacts:/mlartifacts"]

@@ -20,17 +20,13 @@ MDLC Python SDK / Jupyter          Cosmos UI
 
 ## What you get
 
-| Layer | Component | Port | Role |
-|-------|-----------|------|------|
-| UI / SDK | Cosmos UI | 8080 | Job setup, datasets, tracking, prompt |
-| UI / SDK | `mdlc` Python SDK | — | Notebook / CLI client |
-| Orchestration | AIML MDLC Serv | 8000 | `create_finetune_job`, status, `register_model` |
-| Services | MDS | 8001 | `register_dataset(gcs_path)` → `id:version` |
-| Services | Pipelineserv | 8002 | `create_pipeline` / complete |
-| Services | Aimlopsserv | 8003 | Create endpoint → deploy → prompt API |
-| Infra | Local runner (Airflow DAG equivalent) | — | Sequence from the flow diagram |
-| Infra | Ray (mock or real) | — | `create_cluster` / `submit_training_job` |
-| Infra | MLflow | 5000 (optional) | metrics / params / model artifacts |
+| Layer | Component | Role |
+|-------|-----------|------|
+| Gateway | **FTAAS** `:8080` | Single process: UI + all APIs |
+| UI / SDK | Cosmos UI + `mdlc` SDK | Job setup, datasets, tracking, prompt |
+| Orchestration | AIML MDLC Serv | `create_finetune_job`, status, `register_model` |
+| Services | MDS · Pipelineserv · Aimlopsserv | Dataset registry, pipelines, deploy/prompt |
+| Infra | Local runner (Airflow DAG equiv.) · Ray · MLflow | Train → track → register |
 
 ### Supported frameworks
 Hugging Face Transformers · TRL · Verl · LLaMA-Factory · Unsloth · Axolotl
@@ -114,7 +110,7 @@ python -m mdlc.cli register-dataset examples/data/alpaca_sample.jsonl --name alp
 | Phase | Milestone | Status in this repo |
 |-------|-----------|---------------------|
 | 0 | Fine-Tuning & RL Templates | `training/templates/` |
-| 1 | Fine-Tuning UI | Cosmos UI on :8080 |
+| 1 | Fine-Tuning UI | Cosmos UI on unified `:8080` |
 | 2 | Fine-Tune & Evaluate | Jobs + Aimlopsserv endpoints + eval stack API |
 | 3 | Resource Optimization | Planned (catalog stub) |
 | 4 | Sweeps & Optimization | Planned (catalog stub) |
@@ -132,6 +128,7 @@ FTAAS/
 ├── configs/settings.yaml
 ├── packages/mdlc_sdk/mdlc/     # Python SDK + shared models
 ├── services/
+│   ├── ftaas_app/              # Unified gateway (one process)
 │   ├── mdlc_server/            # AIML MDLC Serv
 │   ├── mds/                    # Dataset registry
 │   ├── pipelineserv/

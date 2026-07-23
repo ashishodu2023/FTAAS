@@ -92,7 +92,7 @@ async def create_endpoint(req: CreateEndpointRequest) -> EndpointInfo:
     endpoint_id = new_id("ep_")
     # evaluation path uses vllm → adapters → Ray Serve; deployment uses aimlopsserv
     fw = req.inference_framework
-    url = f"http://127.0.0.1:8003/v1/endpoints/{endpoint_id}/prompt"
+    url = f"{settings.aimlopsserv_url.rstrip('/')}/v1/endpoints/{endpoint_id}/prompt"
     info = EndpointInfo(
         endpoint_id=endpoint_id,
         model_name=model["model_name"],

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start all FTAAS services locally (no Docker required).
+# Start FTAAS as a single unified process (UI + all APIs on one port).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -7,6 +7,11 @@ cd "$ROOT"
 export PYTHONPATH="${ROOT}:${ROOT}/packages/mdlc_sdk:${ROOT}/services:${PYTHONPATH:-}"
 export FTAAS_CONFIG="${FTAAS_CONFIG:-$ROOT/configs/settings.yaml}"
 export FTAAS_DATA_DIR="${FTAAS_DATA_DIR:-$ROOT/data}"
+# All logical services share the unified gateway
+export FTAAS_MDLC_URL="${FTAAS_MDLC_URL:-http://127.0.0.1:8080}"
+export FTAAS_MDS_URL="${FTAAS_MDS_URL:-http://127.0.0.1:8080}"
+export FTAAS_PIPELINESERV_URL="${FTAAS_PIPELINESERV_URL:-http://127.0.0.1:8080}"
+export FTAAS_AIMLOPSSERV_URL="${FTAAS_AIMLOPSSERV_URL:-http://127.0.0.1:8080}"
 
 mkdir -p "$ROOT/data" "$ROOT/logs"
 
@@ -15,37 +20,25 @@ if [[ -f "$ROOT/.venv/bin/activate" ]]; then
   source "$ROOT/.venv/bin/activate"
 fi
 
-echo "==> Starting MDS      :8001"
-python -m mds.main >"$ROOT/logs/mds.log" 2>&1 &
-echo $! >"$ROOT/logs/mds.pid"
-
-echo "==> Starting Pipelineserv :8002"
-python -m pipelineserv.main >"$ROOT/logs/pipelineserv.log" 2>&1 &
-echo $! >"$ROOT/logs/pipelineserv.pid"
-
-echo "==> Starting Aimlopsserv :8003"
-python -m aimlopsserv.main >"$ROOT/logs/aimlopsserv.log" 2>&1 &
-echo $! >"$ROOT/logs/aimlopsserv.pid"
-
-echo "==> Starting MDLC Serv :8000"
-python -m mdlc_server.main >"$ROOT/logs/mdlc.log" 2>&1 &
-echo $! >"$ROOT/logs/mdlc.pid"
-
-echo "==> Starting Cosmos UI :8080"
-python -c "from ui.cosmos_ui.app import main; main()" >"$ROOT/logs/cosmos_ui.log" 2>&1 &
-echo $! >"$ROOT/logs/cosmos_ui.pid"
-
-sleep 2
-echo
-echo "Services:"
-for s in mds:8001 pipelineserv:8002 aimlopsserv:8003 mdlc:8000 cosmos_ui:8080; do
-  name="${s%%:*}"; port="${s##*:}"
-  if curl -sf "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
-    echo "  ✓ ${name}  http://127.0.0.1:${port}"
-  else
-    echo "  … ${name}  starting (see logs/${name}.log)"
+# Stop any previous unified or split processes
+"$ROOT/scripts/stop_all.sh" >/dev/null 2>&1 || true
+for p in 8000 8001 8002 8003 8080; do
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -tiTCP:"$p" -sTCP:LISTEN 2>/dev/null | xargs kill -9 2>/dev/null || true
   fi
 done
-echo
-echo "Cosmos UI → http://127.0.0.1:8080"
+
+PORT="${FTAAS_PORT:-8080}"
+echo "==> Starting FTAAS on :${PORT}"
+python -m ftaas_app.main >"$ROOT/logs/ftaas.log" 2>&1 &
+echo $! >"$ROOT/logs/ftaas.pid"
+
+sleep 2
+if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+  echo "  ✓ FTAAS  http://127.0.0.1:${PORT}"
+  echo "  UI + API → http://127.0.0.1:${PORT}"
+else
+  echo "  … starting (see logs/ftaas.log)"
+  tail -n 40 "$ROOT/logs/ftaas.log" || true
+fi
 echo "Stop with  ./scripts/stop_all.sh"
