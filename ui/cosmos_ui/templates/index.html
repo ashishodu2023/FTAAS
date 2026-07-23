@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cosmos UI — Fine Tuning as a Service</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="brand">
+      <span class="logo">Cosmos.AI</span>
+      <span class="tag">Machine Learning Made Easy</span>
+    </div>
+    <h1>Fine Tuning as a Service</h1>
+    <p class="lede">Select an open-source LLM, register a dataset, choose a framework &amp; technique, train on Ray, track with MLflow, deploy via Aimlopsserv.</p>
+  </header>
+
+  {% if error %}
+  <div class="banner warn">Backend unreachable: {{ error }}. Start services with <code>./scripts/start_all.sh</code>.</div>
+  {% endif %}
+
+  <main class="grid">
+    <section class="panel">
+      <h2>1. Register dataset (MDS)</h2>
+      <form method="post" action="/register-dataset">
+        <label>GCS / local path
+          <input name="gcs_path" required placeholder="file://…/examples/data/alpaca_sample.jsonl" value="examples/data/alpaca_sample.jsonl" />
+        </label>
+        <label>Name <input name="name" placeholder="alpaca-sample" /></label>
+        <button type="submit">register_dataset</button>
+      </form>
+      <h3>Datasets</h3>
+      <ul class="list">
+        {% for d in datasets %}
+        <li><code>{{ d.dataset_id }}:{{ d.version }}</code> — {{ d.name }} ({{ d.num_rows or '?' }} rows)</li>
+        {% else %}
+        <li class="muted">No datasets yet</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>2. Create fine-tune job (MDLC)</h2>
+      <form method="post" action="/create-job">
+        <label>Model
+          <input name="model_name" value="{{ defaults.get('model_name', 'sshleifer/tiny-gpt2') }}" required />
+        </label>
+        <label>Framework
+          <select name="framework">
+            {% for f in catalog.get('frameworks', ['transformers','trl','verl','llama-factory','unsloth','axolotl']) %}
+            <option value="{{ f }}" {% if f == defaults.get('framework') %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Technique
+          <select name="technique">
+            <optgroup label="PEFT">
+              <option value="lora" selected>LoRA</option>
+              <option value="qlora">QLoRA</option>
+              <option value="dora">DoRA</option>
+              <option value="prefix_tuning">Prefix Tuning</option>
+              <option value="ia3">IA3</option>
+            </optgroup>
+            <optgroup label="Full">
+              <option value="16bit_full">16-bit Full</option>
+              <option value="frozen">Frozen</option>
+            </optgroup>
+            <optgroup label="Instruction">
+              <option value="sft">SFT</option>
+              <option value="self_instruct">Self-Instruct</option>
+            </optgroup>
+            <optgroup label="Alignment">
+              <option value="dpo">DPO</option>
+              <option value="ppo">PPO</option>
+              <option value="orpo">ORPO</option>
+            </optgroup>
+          </select>
+        </label>
+        <label>Dataset ID
+          <input name="dataset_id" required placeholder="ds_…" value="{{ datasets[0].dataset_id if datasets else '' }}" />
+        </label>
+        <label>Version <input name="dataset_version" value="{{ datasets[0].version if datasets else '1' }}" /></label>
+        <div class="row">
+          <label>max_steps <input type="number" name="max_steps" value="10" /></label>
+          <label>lr <input name="learning_rate" value="0.0002" /></label>
+          <label>lora_r <input type="number" name="lora_r" value="8" /></label>
+        </div>
+        <button type="submit">create_finetune_job</button>
+      </form>
+    </section>
+
+    <section class="panel wide">
+      <h2>Jobs</h2>
+      <table>
+        <thead>
+          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Metrics</th><th>Pipeline</th></tr>
+        </thead>
+        <tbody>
+          {% for j in jobs %}
+          <tr>
+            <td><code>{{ j.job_id }}</code></td>
+            <td>{{ j.model_name }}</td>
+            <td>{{ j.framework }} / {{ j.technique }}</td>
+            <td><span class="pill {{ j.status }}">{{ j.status }}</span></td>
+            <td><code>{{ j.metrics }}</code></td>
+            <td><code>{{ j.pipeline_id or '—' }}</code></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">No jobs yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>3. Registered models</h2>
+      <ul class="list">
+        {% for m in models %}
+        <li><code>{{ m.model_name }}</code> v{{ m.version }} — run {{ m.run_id }}</li>
+        {% else %}
+        <li class="muted">No models registered</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/deploy">
+        <label>Deploy model
+          <input name="model_name" required value="{{ models[0].model_name if models else '' }}" placeholder="tiny-gpt2-ft" />
+        </label>
+        <label>Inference framework
+          <select name="inference_framework">
+            <option value="vllm">vLLM + Adapters + Ray Serve</option>
+            <option value="transformers">Transformers</option>
+            <option value="ray_serve">Ray Serve</option>
+          </select>
+        </label>
+        <button type="submit">create_endpoint / deploy</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>4. Prompt (UI / API)</h2>
+      <ul class="list">
+        {% for e in endpoints %}
+        <li><code>{{ e.endpoint_id }}</code> — {{ e.model_name }}@{{ e.inference_framework }}</li>
+        {% else %}
+        <li class="muted">No endpoints</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/prompt">
+        <label>Endpoint ID
+          <input name="endpoint_id" required value="{{ endpoints[0].endpoint_id if endpoints else '' }}" />
+        </label>
+        <label>Prompt
+          <textarea name="prompt" rows="3" required>What is LoRA?</textarea>
+        </label>
+        <button type="submit">prompt</button>
+      </form>
+    </section>
+
+    <section class="panel wide">
+      <h2>Catalog</h2>
+      <div class="chips">
+        {% for f in catalog.get('frameworks', []) %}
+        <span class="chip">{{ f }}</span>
+        {% endfor %}
+      </div>
+      <h3>Roadmap</h3>
+      <ol>
+        {% for p in catalog.get('phases', []) %}
+        <li>Phase {{ p.phase }} — {{ p.name }} <em>({{ p.status }})</em></li>
+        {% endfor %}
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <span>FTAAS · AIML MDLC Serv · Pipelineserv · MDS · Aimlopsserv · Airflow · Ray · MLflow</span>
+  </footer>
+</body>
+</html>

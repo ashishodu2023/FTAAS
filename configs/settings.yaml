@@ -1,0 +1,89 @@
+# FTAAS platform configuration
+platform:
+  name: Fine Tuning as a Service
+  env: local
+
+services:
+  mdlc_server:
+    host: 0.0.0.0
+    port: 8000
+    db_url: sqlite+aiosqlite:///./data/mdlc.db
+  mds:
+    host: 0.0.0.0
+    port: 8001
+    db_url: sqlite+aiosqlite:///./data/mds.db
+    storage_root: ./data/datasets
+  pipelineserv:
+    host: 0.0.0.0
+    port: 8002
+    db_url: sqlite+aiosqlite:///./data/pipelines.db
+  aimlopsserv:
+    host: 0.0.0.0
+    port: 8003
+    db_url: sqlite+aiosqlite:///./data/aimlops.db
+  cosmos_ui:
+    host: 0.0.0.0
+    port: 8080
+
+integrations:
+  mlflow:
+    # Local sqlite by default (no server). Override with FTAAS_MLFLOW_TRACKING_URI
+    # e.g. http://127.0.0.1:5000 when running the compose mlflow service.
+    tracking_uri: sqlite:///./data/mlflow.db
+    experiment: ftaas-finetune
+
+  ray:
+    address: auto  # or local
+    mock: true     # set false when a real Ray cluster is available
+  airflow:
+    enabled: false # local_runner used when false
+  gcs:
+    mock: true
+    local_mirror: ./data/gcs_mirror
+
+frameworks:
+  - transformers
+  - trl
+  - verl
+  - llama-factory
+  - unsloth
+  - axolotl
+
+techniques:
+  full_finetune:
+    - 16bit_full
+    - frozen
+  peft:
+    - lora
+    - qlora
+    - dora
+    - lora_plus
+    - longlora
+    - loftq
+    - pissa
+    - prefix_tuning
+    - adapter_tuning
+    - bitfit
+    - ia3
+  instruction_tuning:
+    - sft
+    - multimodal_instruction
+    - self_instruct
+  alignment:
+    - reward_modeling
+    - ppo
+    - dpo
+    - orpo
+
+defaults:
+  framework: transformers
+  technique: lora
+  model_name: sshleifer/tiny-gpt2
+  hyperparameters:
+    learning_rate: 2.0e-4
+    num_train_epochs: 1
+    per_device_train_batch_size: 2
+    lora_r: 8
+    lora_alpha: 16
+    max_steps: 10
+    output_dir: ./data/outputs

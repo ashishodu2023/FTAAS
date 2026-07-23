@@ -1,0 +1,21 @@
+# Phase 0 — RL / preference optimization template (TRL)
+
+name: trl_dpo
+framework: trl
+technique: dpo
+distributed: true
+model: sshleifer/tiny-gpt2
+hyperparameters:
+  learning_rate: 5.0e-5
+  max_steps: 20
+  per_device_train_batch_size: 1
+  lora_r: 16
+  lora_alpha: 32
+dataset:
+  format: jsonl
+  fields: [prompt, chosen, rejected]
+ray:
+  num_workers: 2
+  use_gpu: true
+mlflow:
+  experiment: ftaas-rl

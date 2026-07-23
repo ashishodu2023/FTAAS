@@ -1,0 +1,17 @@
+# Phase 0 — Full fine-tune template
+
+name: full_16bit
+framework: transformers
+technique: 16bit_full
+distributed: true
+model: sshleifer/tiny-gpt2
+hyperparameters:
+  learning_rate: 1.0e-5
+  max_steps: 50
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+ray:
+  num_workers: 4
+  use_gpu: true
+mlflow:
+  experiment: ftaas-full-ft
