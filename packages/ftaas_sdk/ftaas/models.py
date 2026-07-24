@@ -203,8 +203,8 @@ class EndpointInfo(BaseModel):
 
 class PromptRequest(BaseModel):
     prompt: str
-    max_tokens: int = 128
-    temperature: float = 0.7
+    max_tokens: int = 48
+    temperature: float = 0.0
 
 
 class PromptResponse(BaseModel):

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=preview1" />
+  <link rel="stylesheet" href="/static/styles.css?v=prompt2" />
 </head>
 <body>
   <header class="hero">
@@ -69,8 +69,9 @@
       <h2>2. Create fine-tune job</h2>
       <form id="form-job" data-action="create-job">
         <label>Model
-          <input name="model_name" value="{{ defaults.get('model_name', 'sshleifer/tiny-gpt2') }}" required />
+          <input name="model_name" value="{{ defaults.get('model_name', 'gpt2') }}" required />
         </label>
+        <p class="hint muted">Use <code>gpt2</code> (or larger) for readable prompts. <code>sshleifer/tiny-gpt2</code> is pipeline smoke-only — it cannot produce English.</p>
         <label>Framework
           <select name="framework" id="sel-framework">
             {% for f in catalog.get('frameworks', ['transformers','trl','verl','llama-factory','unsloth','axolotl']) %}
@@ -186,6 +187,7 @@
         <label>Prompt
           <textarea name="prompt" id="inp-prompt" rows="3" required>What is LoRA?</textarea>
         </label>
+        <p class="hint muted">Prompts are wrapped as <code>### Instruction / ### Response</code> (same format as training). After changing the default model, create a <strong>new</strong> fine-tune job then deploy — old <code>tiny-gpt2-ft</code> endpoints will stay gibberish.</p>
         <button type="submit">prompt</button>
       </form>
       <div id="prompt-result" class="result" hidden>
@@ -224,6 +226,6 @@
     "endpoints": endpoints
   } | tojson }}
   </script>
-  <script src="/static/console.js?v=preview1" defer></script>
+  <script src="/static/console.js?v=prompt2" defer></script>
 </body>
 </html>

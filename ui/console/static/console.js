@@ -532,8 +532,8 @@
         method: "POST",
         body: JSON.stringify({
           prompt: fd.get("prompt"),
-          max_tokens: 128,
-          temperature: 0.7,
+          max_tokens: 48,
+          temperature: 0,
         }),
       });
       promptResult.hidden = false;

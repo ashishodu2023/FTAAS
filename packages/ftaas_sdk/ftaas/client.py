@@ -202,8 +202,8 @@ class Client:
         self,
         endpoint_id: str,
         prompt: str,
-        max_tokens: int = 128,
-        temperature: float = 0.7,
+        max_tokens: int = 48,
+        temperature: float = 0.0,
     ) -> PromptResponse:
         payload = PromptRequest(prompt=prompt, max_tokens=max_tokens, temperature=temperature)
         r = self._client.post(

@@ -209,7 +209,7 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 experiment_id=str(exp_id),
                 run_id=run_id,
                 model_name=job["model_name"].split("/")[-1] + "-ft",
-                model_uri=result.model_uri or result.output_dir,
+                model_uri=str(Path(result.model_uri or result.output_dir).resolve()),
                 metrics=metrics,
                 parameters=result.parameters,
             )

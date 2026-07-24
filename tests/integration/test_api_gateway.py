@@ -130,6 +130,16 @@ def test_create_endpoint(client_app):
     assert any(m["model_name"] == "tiny-gpt2-ft" for m in models.json())
 
 
+def test_prompt_format_helpers():
+    from deploy.main import _extract_response, _format_sft_prompt
+
+    wrapped = _format_sft_prompt("What is LoRA?")
+    assert wrapped.startswith("### Instruction:")
+    assert wrapped.rstrip().endswith("### Response:")
+    full = wrapped + "LoRA is a parameter-efficient fine-tuning method."
+    assert _extract_response(full, wrapped) == "LoRA is a parameter-efficient fine-tuning method."
+
+
 @pytest.mark.slow
 def test_real_generate_from_hf_checkpoint():
     from deploy.main import _GEN_CACHE, _generate

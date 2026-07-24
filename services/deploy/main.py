@@ -172,8 +172,8 @@ async def prompt_endpoint(endpoint_id: str, req: PromptRequest) -> PromptRespons
         completion = _generate(
             model_uri,
             req.prompt,
-            max_new_tokens=int(req.max_tokens or 64),
-            temperature=float(req.temperature if req.temperature is not None else 0.7),
+            max_new_tokens=int(req.max_tokens or 48),
+            temperature=float(req.temperature if req.temperature is not None else 0.0),
         )
     except Exception as exc:
         raise HTTPException(500, f"Inference failed: {exc}") from exc
@@ -189,22 +189,76 @@ async def prompt_endpoint(endpoint_id: str, req: PromptRequest) -> PromptRespons
 _GEN_CACHE: dict[str, tuple[Any, Any]] = {}
 
 
+def _resolve_model_uri(model_uri: str) -> str:
+    """Resolve relative checkpoints written under FTAAS_DATA_DIR / cwd."""
+    p = Path(model_uri)
+    if p.exists():
+        return str(p.resolve())
+    from ftaas.config import ensure_data_dirs
+
+    root = ensure_data_dirs()
+    candidates = [
+        root / model_uri,
+        root / "outputs" / p.name,
+        Path.cwd() / model_uri,
+        Path("/app") / model_uri,
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return str(cand.resolve())
+    return model_uri
+
+
+def _format_sft_prompt(prompt: str) -> str:
+    """Match training template in training/frameworks/registry._row_to_text."""
+    text = (prompt or "").strip()
+    if "### Instruction:" in text or "### Response:" in text:
+        if "### Response:" not in text:
+            text = text.rstrip() + "\n### Response:\n"
+        elif not text.rstrip().endswith("### Response:"):
+            pass
+        return text
+    return f"### Instruction:\n{text}\n### Response:\n"
+
+
+def _extract_response(full: str, prompt_prefix: str) -> str:
+    text = full
+    if text.startswith(prompt_prefix):
+        text = text[len(prompt_prefix) :]
+    marker = "### Response:"
+    if marker in text:
+        text = text.split(marker, 1)[-1]
+    for stop in ("### Instruction:", "### Input:", "<|endoftext|>"):
+        if stop in text:
+            text = text.split(stop, 1)[0]
+    return text.strip()
+
+
 def _generate(
     model_uri: str,
     prompt: str,
-    max_new_tokens: int = 64,
-    temperature: float = 0.7,
+    max_new_tokens: int = 48,
+    temperature: float = 0.0,
 ) -> str:
     """Load PEFT/HF weights from model_uri and generate (CPU/GPU)."""
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    model_uri = _resolve_model_uri(model_uri)
+
     if model_uri not in _GEN_CACHE:
+        if not Path(model_uri).exists() and "/" in model_uri and not model_uri.startswith("/"):
+            # Allow bare HF hub ids (e.g. gpt2) when no local checkpoint
+            pass
+        elif not Path(model_uri).exists():
+            raise FileNotFoundError(
+                f"Model checkpoint not found: {model_uri}. "
+                "Re-run fine-tune after deploy (ephemeral disk) or set a persistent volume."
+            )
         tok = AutoTokenizer.from_pretrained(model_uri)
         if tok.pad_token is None:
             tok.pad_token = tok.eos_token
-        # Adapter dirs contain adapter_config.json; base model is in config
         adapter_cfg = Path(model_uri) / "adapter_config.json"
         if adapter_cfg.exists():
             import json as _json
@@ -219,20 +273,30 @@ def _generate(
         model.eval()
         _GEN_CACHE[model_uri] = (model, tok)
     model, tok = _GEN_CACHE[model_uri]
-    inputs = tok(prompt, return_tensors="pt")
-    temp = max(float(temperature), 1e-5)
+
+    formatted = _format_sft_prompt(prompt)
+    inputs = tok(formatted, return_tensors="pt")
+    max_new = max(1, min(int(max_new_tokens or 48), 96))
+    temp = float(temperature if temperature is not None else 0.0)
+    gen_kwargs: dict[str, Any] = {
+        "max_new_tokens": max_new,
+        "pad_token_id": tok.eos_token_id,
+        "eos_token_id": tok.eos_token_id,
+        "repetition_penalty": 1.2,
+    }
+    # Greedy decoding by default — far more stable for short LoRA demos
+    if temp <= 0.05:
+        gen_kwargs["do_sample"] = False
+    else:
+        gen_kwargs["do_sample"] = True
+        gen_kwargs["temperature"] = max(temp, 0.05)
+        gen_kwargs["top_p"] = 0.9
+
     with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-            temperature=temp,
-            pad_token_id=tok.eos_token_id,
-        )
-    text = tok.decode(out[0], skip_special_tokens=True)
-    if text.startswith(prompt):
-        text = text[len(prompt) :].lstrip()
-    return text or tok.decode(out[0], skip_special_tokens=True)
+        out = model.generate(**inputs, **gen_kwargs)
+    decoded = tok.decode(out[0], skip_special_tokens=True)
+    completion = _extract_response(decoded, formatted)
+    return completion or decoded
 
 
 @app.get("/v1/eval/stack")
