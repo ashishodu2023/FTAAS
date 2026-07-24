@@ -159,6 +159,7 @@
         const stopBtn = !TERMINAL.has(j.status)
           ? `<button type="button" class="btn-danger btn-stop-inline" data-stop="${esc(j.job_id)}">Stop</button>`
           : "";
+        const logsBtn = `<button type="button" class="btn-small" data-logs="${esc(j.job_id)}">View log</button>`;
         const prog = progressOf(j);
         const active = j.job_id === state.selectedJobId ? " active" : "";
         return `<tr data-job="${esc(j.job_id)}" class="job-row${active}">
@@ -171,7 +172,7 @@
             <small title="${esc(prog.message)}">${esc(prog.message)}</small>
           </td>
           <td><code>${esc(j.pipeline_id || "—")}</code></td>
-          <td>${stopBtn}${deployBtn}</td>
+          <td class="actions-cell">${logsBtn}${stopBtn}${deployBtn}</td>
         </tr>`;
       })
       .join("");
@@ -248,12 +249,18 @@
     paintJobDetail(data);
   }
 
-  function selectJob(jobId) {
+  function selectJob(jobId, { scroll = false } = {}) {
     state.selectedJobId = jobId;
     jobsBody.querySelectorAll("tr.job-row").forEach((tr) => {
       tr.classList.toggle("active", tr.dataset.job === jobId);
     });
-    refreshSelectedLogs().catch((e) => flash(e.message, true));
+    refreshSelectedLogs()
+      .then(() => {
+        if (scroll) {
+          document.getElementById("job-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      })
+      .catch((e) => flash(e.message, true));
   }
 
   function renderModels(models) {
@@ -597,6 +604,13 @@
       stopJob(stop.dataset.stop).catch((e) => flash(e.message, true));
       return;
     }
+    const logsBtn = ev.target.closest("[data-logs]");
+    if (logsBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      selectJob(logsBtn.dataset.logs, { scroll: true });
+      return;
+    }
     const btn = ev.target.closest("[data-deploy]");
     if (btn) {
       modelSel.value = btn.dataset.deploy;
@@ -605,7 +619,7 @@
       return;
     }
     const row = ev.target.closest("tr.job-row[data-job]");
-    if (row) selectJob(row.dataset.job);
+    if (row) selectJob(row.dataset.job, { scroll: true });
   });
 
   btnStopJob?.addEventListener("click", () => {

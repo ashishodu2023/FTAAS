@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=stop1" />
+  <link rel="stylesheet" href="/static/styles.css?v=viewlog1" />
 </head>
 <body>
   <header class="hero">
@@ -106,7 +106,7 @@
       </div>
       <table>
         <thead>
-          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Progress</th><th>Pipeline</th><th></th></tr>
+          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Progress</th><th>Pipeline</th><th>Actions</th></tr>
         </thead>
         <tbody id="tbody-jobs">
           {% for j in jobs %}
@@ -120,7 +120,15 @@
               <small>{{ (j.progress or {}).get('message') or (j.error or '—') }}</small>
             </td>
             <td><code>{{ j.pipeline_id or '—' }}</code></td>
-            <td>{% if j.registered_model_name %}<button type="button" class="btn-small" data-deploy="{{ j.registered_model_name }}">Deploy</button>{% endif %}</td>
+            <td class="actions-cell">
+              <button type="button" class="btn-small" data-logs="{{ j.job_id }}">View log</button>
+              {% if j.status not in ['succeeded', 'failed', 'cancelled'] %}
+              <button type="button" class="btn-danger btn-stop-inline" data-stop="{{ j.job_id }}">Stop</button>
+              {% endif %}
+              {% if j.registered_model_name %}
+              <button type="button" class="btn-small" data-deploy="{{ j.registered_model_name }}">Deploy</button>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
           <tr class="empty"><td colspan="7" class="muted">No jobs yet</td></tr>
@@ -138,7 +146,7 @@
         <div class="progress big" id="job-progress-wrap" hidden>
           <div class="bar" id="job-progress-bar" style="width:0%"></div>
         </div>
-        <pre class="log-view" id="job-log-view">Click a job row to stream logs and progress.</pre>
+        <pre class="log-view" id="job-log-view">Click <strong>View log</strong> on a job (or the row) to stream logs and progress.</pre>
       </div>
     </section>
 
@@ -229,6 +237,6 @@
     "endpoints": endpoints
   } | tojson }}
   </script>
-  <script src="/static/console.js?v=stop1" defer></script>
+  <script src="/static/console.js?v=viewlog1" defer></script>
 </body>
 </html>

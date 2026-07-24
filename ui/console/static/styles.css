@@ -349,10 +349,16 @@ button.btn-danger:hover {
   transform: none;
 }
 button.btn-danger[hidden] { display: none; }
+.actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  white-space: nowrap;
+}
 .btn-stop-inline {
   font-size: 0.72rem;
   padding: 0.25rem 0.55rem;
-  margin-left: 0.25rem;
 }
 
 .pill.cancelled { background: #e5e7eb; color: #374151; }
