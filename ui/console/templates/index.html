@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=preview1" />
 </head>
 <body>
   <header class="hero">
@@ -16,7 +16,7 @@
       <span class="tag">Console</span>
     </div>
     <h1>Fine Tuning as a Service</h1>
-    <p class="lede">Register a dataset, choose a framework &amp; PEFT technique, train on Ray, track with MLflow, deploy with vLLM / Ray Serve, and prompt via UI or API.</p>
+    <p class="lede">Preview a dataset, register it, choose a framework &amp; PEFT technique, run <strong>real</strong> fine-tuning (torch / transformers / peft / TRL), track with MLflow, deploy, and prompt the adapted model.</p>
   </header>
 
   <div id="flash" class="banner {% if flash_type == 'err' %}err{% endif %}" {% if not flash and not error %}hidden{% endif %}>
@@ -25,21 +25,34 @@
 
   <main class="grid">
     <section class="panel">
-      <h2>1. Register dataset</h2>
+      <h2>1. Preview &amp; register dataset</h2>
       <form id="form-register" data-action="register">
         <label>GCS / local path
-          <input name="gcs_path" required placeholder="examples/data/alpaca_sample.jsonl" value="examples/data/alpaca_sample.jsonl" />
+          <input name="gcs_path" id="inp-gcs-path" required placeholder="examples/data/alpaca_sample.jsonl" value="examples/data/alpaca_sample.jsonl" />
         </label>
-        <label>Name <input name="name" placeholder="alpaca-sample" value="alpaca-sample" /></label>
+        <label>Name <input name="name" id="inp-ds-name" placeholder="alpaca-sample" value="alpaca-sample" /></label>
         <label>Format
-          <select name="format">
+          <select name="format" id="sel-ds-format">
             <option value="jsonl" selected>jsonl</option>
             <option value="json">json</option>
             <option value="csv">csv</option>
           </select>
         </label>
-        <button type="submit">register_dataset</button>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="btn-preview-ds">Preview data</button>
+          <button type="submit" id="btn-register-ds" disabled title="Preview the file first">Register dataset</button>
+        </div>
       </form>
+      <div id="dataset-preview" class="preview-box" hidden>
+        <div class="preview-meta" id="dataset-preview-meta"></div>
+        <div class="preview-warn" id="dataset-preview-warn" hidden></div>
+        <div class="table-scroll">
+          <table class="preview-table" id="dataset-preview-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
       <h3>Datasets</h3>
       <ul class="list" id="list-datasets">
         {% for d in datasets %}
@@ -92,16 +105,19 @@
       </div>
       <table>
         <thead>
-          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Metrics</th><th>Pipeline</th><th></th></tr>
+          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Progress</th><th>Pipeline</th><th></th></tr>
         </thead>
         <tbody id="tbody-jobs">
           {% for j in jobs %}
-          <tr data-job="{{ j.job_id }}">
+          <tr data-job="{{ j.job_id }}" class="job-row">
             <td><code>{{ j.job_id }}</code></td>
             <td>{{ j.model_name }}</td>
             <td>{{ j.framework }} / {{ j.technique }}</td>
             <td><span class="pill {{ j.status }}">{{ j.status }}</span></td>
-            <td><code>{{ j.metrics }}</code></td>
+            <td class="progress-cell">
+              <div class="progress"><div class="bar" style="width: {{ (j.progress or {}).get('percent', 0) }}%"></div></div>
+              <small>{{ (j.progress or {}).get('message') or (j.error or '—') }}</small>
+            </td>
             <td><code>{{ j.pipeline_id or '—' }}</code></td>
             <td>{% if j.registered_model_name %}<button type="button" class="btn-small" data-deploy="{{ j.registered_model_name }}">Deploy</button>{% endif %}</td>
           </tr>
@@ -110,6 +126,16 @@
           {% endfor %}
         </tbody>
       </table>
+      <div class="job-detail" id="job-detail">
+        <div class="job-detail-head">
+          <h3 id="job-detail-title">Select a job to view logs</h3>
+          <span id="job-detail-meta" class="muted"></span>
+        </div>
+        <div class="progress big" id="job-progress-wrap" hidden>
+          <div class="bar" id="job-progress-bar" style="width:0%"></div>
+        </div>
+        <pre class="log-view" id="job-log-view">Click a job row to stream logs and progress.</pre>
+      </div>
     </section>
 
     <section class="panel">
@@ -131,9 +157,9 @@
         </label>
         <label>Inference framework
           <select name="inference_framework">
-            <option value="vllm">vLLM + Adapters + Ray Serve</option>
-            <option value="transformers">Transformers</option>
-            <option value="ray_serve">Ray Serve</option>
+            <option value="transformers" selected>Transformers (local PEFT/HF)</option>
+            <option value="vllm" disabled>vLLM + Ray Serve (planned)</option>
+            <option value="ray_serve" disabled>Ray Serve (planned)</option>
           </select>
         </label>
         <button type="submit">create_endpoint / deploy</button>
@@ -198,6 +224,6 @@
     "endpoints": endpoints
   } | tojson }}
   </script>
-  <script src="/static/console.js" defer></script>
+  <script src="/static/console.js?v=preview1" defer></script>
 </body>
 </html>

@@ -64,6 +64,19 @@ class Client:
         r.raise_for_status()
         return DatasetInfo.model_validate(r.json())
 
+    def preview_dataset(
+        self,
+        gcs_path: str,
+        format: str = "jsonl",
+        limit: int = 5,
+    ) -> dict:
+        r = self._client.post(
+            f"{self.registry_url}/v1/datasets/preview",
+            json={"gcs_path": gcs_path, "format": format, "limit": limit},
+        )
+        r.raise_for_status()
+        return r.json()
+
     def get_dataset(self, dataset_id: str, version: str = "latest") -> DatasetInfo:
         r = self._client.get(f"{self.registry_url}/v1/datasets/{dataset_id}", params={"version": version})
         r.raise_for_status()
@@ -125,6 +138,11 @@ class Client:
         r.raise_for_status()
         return FinetuneJob.model_validate(r.json())
 
+    def get_job_logs(self, job_id: str) -> dict[str, Any]:
+        r = self._client.get(f"{self.control_url}/v1/jobs/{job_id}/logs")
+        r.raise_for_status()
+        return r.json()
+
     def list_jobs(self) -> list[FinetuneJob]:
         r = self._client.get(f"{self.control_url}/v1/jobs")
         r.raise_for_status()
@@ -164,7 +182,7 @@ class Client:
         self,
         model_name: str,
         model_version: Optional[str] = None,
-        inference_framework: str = "vllm",
+        inference_framework: str = "transformers",
         use_adapters: bool = True,
     ) -> EndpointInfo:
         payload = CreateEndpointRequest(

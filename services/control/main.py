@@ -50,6 +50,8 @@ class JobRow(Base):
     registered_model_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    logs: Mapped[list] = mapped_column(JSON, default=list)
+    progress: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -90,6 +92,8 @@ def _row_to_job(row: JobRow) -> FinetuneJob:
         registered_model_version=row.registered_model_version,
         error=row.error,
         metrics=row.metrics or {},
+        logs=list(row.logs or []),
+        progress=dict(row.progress or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
         tags=payload.get("tags") or {},
@@ -104,6 +108,15 @@ async def startup() -> None:
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight migrate for existing DBs
+        for stmt in (
+            "ALTER TABLE jobs ADD COLUMN logs JSON",
+            "ALTER TABLE jobs ADD COLUMN progress JSON",
+        ):
+            try:
+                await conn.exec_driver_sql(stmt)
+            except Exception:
+                pass
 
 
 @app.get("/health")
@@ -118,6 +131,19 @@ async def catalog() -> dict[str, Any]:
         "frameworks": cfg.frameworks,
         "techniques": cfg.techniques,
         "defaults": cfg.defaults,
+        "backends": {
+            "transformers": "live — PEFT/transformers Trainer",
+            "trl": "live — TRL SFT/DPO when installed; else PEFT",
+            "verl": "compat — PEFT/TRL backend",
+            "llama-factory": "compat — PEFT backend",
+            "unsloth": "compat — PEFT backend",
+            "axolotl": "compat — PEFT backend",
+        },
+        "inference": {
+            "transformers": "live — local HF/PEFT generate",
+            "vllm": "planned",
+            "ray_serve": "planned",
+        },
         "phases": [
             {"phase": 0, "name": "Fine-Tuning & RL Templates", "status": "available"},
             {"phase": 1, "name": "Fine-Tuning UI", "status": "available"},
@@ -147,6 +173,8 @@ async def create_finetune_job(
                 payload=payload,
                 status=JobStatus.PENDING.value,
                 metrics={},
+                logs=[],
+                progress={"percent": 0, "phase": "queued", "message": "Job created"},
                 created_at=now,
                 updated_at=now,
             )
@@ -224,12 +252,14 @@ async def get_job_status(job_id: str) -> FinetuneJob:
 
 
 class StatusUpdate(BaseModel):
-    status: JobStatus
+    status: Optional[JobStatus] = None
     ray_cluster: Optional[str] = None
     mlflow_run_id: Optional[str] = None
     mlflow_experiment_id: Optional[str] = None
     metrics: Optional[dict[str, float]] = None
     error: Optional[str] = None
+    log: Optional[str] = None
+    progress: Optional[dict[str, Any]] = None
 
 
 @app.patch("/v1/jobs/{job_id}/status", response_model=FinetuneJob)
@@ -241,7 +271,8 @@ async def update_job_status(job_id: str, upd: StatusUpdate) -> FinetuneJob:
         ).scalars().first()
         if not row:
             raise HTTPException(404, "Job not found")
-        row.status = upd.status.value
+        if upd.status is not None:
+            row.status = upd.status.value
         if upd.ray_cluster is not None:
             row.ray_cluster = upd.ray_cluster
         if upd.mlflow_run_id is not None:
@@ -252,9 +283,37 @@ async def update_job_status(job_id: str, upd: StatusUpdate) -> FinetuneJob:
             row.metrics = {**(row.metrics or {}), **upd.metrics}
         if upd.error is not None:
             row.error = upd.error
+        if upd.progress is not None:
+            row.progress = {**(row.progress or {}), **upd.progress}
+        if upd.log:
+            ts = utcnow().isoformat()
+            entry = {"ts": ts, "message": upd.log}
+            logs = list(row.logs or [])
+            logs.append(entry)
+            # keep last 200 lines
+            row.logs = logs[-200:]
         row.updated_at = utcnow()
         await session.commit()
         return _row_to_job(row)
+
+
+@app.get("/v1/jobs/{job_id}/logs")
+async def get_job_logs(job_id: str) -> dict[str, Any]:
+    assert SessionLocal is not None
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(select(JobRow).where(JobRow.job_id == job_id))
+        ).scalars().first()
+    if not row:
+        raise HTTPException(404, "Job not found")
+    return {
+        "job_id": job_id,
+        "status": row.status,
+        "progress": row.progress or {},
+        "logs": row.logs or [],
+        "error": row.error,
+        "metrics": row.metrics or {},
+    }
 
 
 @app.post("/v1/models/register", response_model=ModelInfo)

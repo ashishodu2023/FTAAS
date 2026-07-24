@@ -1,11 +1,11 @@
-"""Ray training job helpers — create_cluster / submit_training_job / poll_job_status."""
+"""Ray training job helpers — real local or Ray-remote execution (no mock train)."""
 
 from __future__ import annotations
 
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from ftaas.config import get_platform_config
 from ftaas.models import Framework, HyperParameters, Technique
@@ -16,7 +16,7 @@ from training.frameworks.registry import TrainResult, get_trainer
 class RayCluster:
     cluster_name: str
     address: str
-    mock: bool = True
+    distributed: bool = False
 
 
 @dataclass
@@ -31,21 +31,30 @@ _JOBS: dict[str, dict[str, Any]] = {}
 
 
 def create_cluster(framework: str, num_workers: int = 1) -> RayCluster:
+    """Create a real Ray cluster when available; otherwise local in-process execution."""
     cfg = get_platform_config()
     name = f"ray-{framework}-{uuid.uuid4().hex[:8]}"
-    mock = cfg.integrations.ray_mock
-    if not mock:
+    prefer_ray = not cfg.integrations.ray_mock
+    if prefer_ray:
         try:
             import ray
 
             if not ray.is_initialized():
-                ray.init(address=cfg.integrations.ray_address, ignore_reinit_error=True)
-            cluster = RayCluster(cluster_name=name, address=str(ray.address_info), mock=False)
+                addr = cfg.integrations.ray_address
+                if addr and addr != "auto":
+                    ray.init(address=addr, ignore_reinit_error=True)
+                else:
+                    ray.init(ignore_reinit_error=True, include_dashboard=False)
+            cluster = RayCluster(
+                cluster_name=name,
+                address=str(ray.address_info.get("address", "local")),
+                distributed=True,
+            )
             _CLUSTERS[name] = cluster
             return cluster
         except Exception:
-            mock = True
-    cluster = RayCluster(cluster_name=name, address="local://mock", mock=True)
+            pass
+    cluster = RayCluster(cluster_name=name, address="local://process", distributed=False)
     _CLUSTERS[name] = cluster
     return cluster
 
@@ -77,10 +86,9 @@ def submit_training_job(
         "result": None,
         "error": None,
     }
-    # Execute inline (mock cluster) or via Ray remote
     cluster = _CLUSTERS.get(cluster_name)
     try:
-        if cluster and not cluster.mock:
+        if cluster and cluster.distributed:
             import ray
 
             @ray.remote

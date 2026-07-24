@@ -1,6 +1,6 @@
 /**
  * FTAAS Console — wires UI forms to gateway /v1 APIs.
- * Flow: register → create job → poll → deploy → prompt
+ * Flow: preview → register → create job → poll → deploy → prompt
  */
 (() => {
   const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
@@ -18,6 +18,20 @@
   const listEndpoints = document.getElementById("list-endpoints");
   const promptResult = document.getElementById("prompt-result");
   const promptOut = document.getElementById("prompt-out");
+  const btnPreviewDs = document.getElementById("btn-preview-ds");
+  const btnRegisterDs = document.getElementById("btn-register-ds");
+  const previewBox = document.getElementById("dataset-preview");
+  const previewMeta = document.getElementById("dataset-preview-meta");
+  const previewWarn = document.getElementById("dataset-preview-warn");
+  const previewTable = document.getElementById("dataset-preview-table");
+  const inpGcsPath = document.getElementById("inp-gcs-path");
+  const selDsFormat = document.getElementById("sel-ds-format");
+
+  const jobDetailTitle = document.getElementById("job-detail-title");
+  const jobDetailMeta = document.getElementById("job-detail-meta");
+  const jobProgressWrap = document.getElementById("job-progress-wrap");
+  const jobProgressBar = document.getElementById("job-progress-bar");
+  const jobLogView = document.getElementById("job-log-view");
 
   let pollTimer = null;
   let state = {
@@ -26,7 +40,25 @@
     jobs: boot.jobs || [],
     models: boot.models || [],
     endpoints: boot.endpoints || [],
+    selectedJobId: null,
+    previewKey: null,
+    previewOk: false,
   };
+
+  function esc(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function progressOf(j) {
+    const p = j.progress || {};
+    const percent = Math.max(0, Math.min(100, Number(p.percent) || 0));
+    const message = p.message || j.error || (TERMINAL.has(j.status) ? j.status : "…");
+    return { percent, message, phase: p.phase || "", step: p.step, max_steps: p.max_steps };
+  }
 
   function flash(msg, isErr = false) {
     if (!flashEl) return;
@@ -115,22 +147,80 @@
       jobsBody.innerHTML = `<tr class="empty"><td colspan="7" class="muted">No jobs yet</td></tr>`;
       return;
     }
+    if (state.selectedJobId && !jobs.some((j) => j.job_id === state.selectedJobId)) {
+      state.selectedJobId = jobs[0].job_id;
+    }
     jobsBody.innerHTML = jobs
       .map((j) => {
         const deployBtn = j.registered_model_name
-          ? `<button type="button" class="btn-small" data-deploy="${j.registered_model_name}">Deploy</button>`
+          ? `<button type="button" class="btn-small" data-deploy="${esc(j.registered_model_name)}">Deploy</button>`
           : "";
-        return `<tr data-job="${j.job_id}">
-          <td><code>${j.job_id}</code></td>
-          <td>${j.model_name}</td>
-          <td>${j.framework} / ${j.technique}</td>
-          <td><span class="pill ${j.status}">${j.status}</span></td>
-          <td><code>${JSON.stringify(j.metrics || {})}</code></td>
-          <td><code>${j.pipeline_id || "—"}</code></td>
+        const prog = progressOf(j);
+        const active = j.job_id === state.selectedJobId ? " active" : "";
+        return `<tr data-job="${esc(j.job_id)}" class="job-row${active}">
+          <td><code>${esc(j.job_id)}</code></td>
+          <td>${esc(j.model_name)}</td>
+          <td>${esc(j.framework)} / ${esc(j.technique)}</td>
+          <td><span class="pill ${esc(j.status)}">${esc(j.status)}</span></td>
+          <td class="progress-cell">
+            <div class="progress"><div class="bar" style="width:${prog.percent}%"></div></div>
+            <small title="${esc(prog.message)}">${esc(prog.message)}</small>
+          </td>
+          <td><code>${esc(j.pipeline_id || "—")}</code></td>
           <td>${deployBtn}</td>
         </tr>`;
       })
       .join("");
+    if (state.selectedJobId) {
+      refreshSelectedLogs().catch(() => {});
+    }
+  }
+
+  function formatLogs(logs) {
+    if (!logs || !logs.length) return "(no log lines yet)";
+    return logs
+      .map((line) => {
+        const ts = line.ts ? String(line.ts).replace("T", " ").slice(0, 19) : "";
+        return `${ts}  ${line.message || JSON.stringify(line)}`;
+      })
+      .join("\n");
+  }
+
+  function paintJobDetail(payload) {
+    if (!jobLogView) return;
+    const prog = payload.progress || {};
+    const percent = Math.max(0, Math.min(100, Number(prog.percent) || 0));
+    jobDetailTitle.textContent = payload.job_id || "Job";
+    const bits = [payload.status || ""];
+    if (prog.phase) bits.push(prog.phase);
+    if (prog.step != null && prog.max_steps != null) bits.push(`step ${prog.step}/${prog.max_steps}`);
+    if (prog.loss != null) bits.push(`loss ${Number(prog.loss).toFixed(4)}`);
+    jobDetailMeta.textContent = bits.filter(Boolean).join(" · ");
+    jobProgressWrap.hidden = false;
+    jobProgressBar.style.width = `${percent}%`;
+    let text = formatLogs(payload.logs);
+    if (payload.error) text += `\n\nERROR: ${payload.error}`;
+    if (payload.metrics && Object.keys(payload.metrics).length) {
+      text += `\n\nmetrics: ${JSON.stringify(payload.metrics)}`;
+    }
+    const atBottom =
+      jobLogView.scrollHeight - jobLogView.scrollTop - jobLogView.clientHeight < 40;
+    jobLogView.textContent = text;
+    if (atBottom) jobLogView.scrollTop = jobLogView.scrollHeight;
+  }
+
+  async function refreshSelectedLogs() {
+    if (!state.selectedJobId) return;
+    const data = await api(`/v1/jobs/${encodeURIComponent(state.selectedJobId)}/logs`);
+    paintJobDetail(data);
+  }
+
+  function selectJob(jobId) {
+    state.selectedJobId = jobId;
+    jobsBody.querySelectorAll("tr.job-row").forEach((tr) => {
+      tr.classList.toggle("active", tr.dataset.job === jobId);
+    });
+    refreshSelectedLogs().catch((e) => flash(e.message, true));
   }
 
   function renderModels(models) {
@@ -201,23 +291,120 @@
 
   function maybePoll() {
     const busy = (state.jobs || []).some((j) => !TERMINAL.has(j.status));
-    if (busy && !pollTimer) {
+    const selectedBusy =
+      state.selectedJobId &&
+      (state.jobs || []).some((j) => j.job_id === state.selectedJobId && !TERMINAL.has(j.status));
+    if ((busy || selectedBusy) && !pollTimer) {
       pollTimer = setInterval(() => {
         refreshJobs().catch((e) => flash(e.message, true));
-      }, 2000);
+      }, 1500);
     }
-    if (!busy && pollTimer) {
+    if (!busy && !selectedBusy && pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
-      // one more pull for models after success
       refreshAll().catch(() => {});
+    }
+  }
+
+  function previewFingerprint() {
+    return `${(inpGcsPath?.value || "").trim()}|${selDsFormat?.value || "jsonl"}`;
+  }
+
+  function invalidatePreview() {
+    state.previewOk = false;
+    state.previewKey = null;
+    if (btnRegisterDs) {
+      btnRegisterDs.disabled = true;
+      btnRegisterDs.title = "Preview the file first";
+    }
+  }
+
+  function cellText(v) {
+    if (v == null) return "";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function renderDatasetPreview(data) {
+    if (!previewBox) return;
+    previewBox.hidden = false;
+    const rows = data.num_rows ?? "?";
+    const cols = (data.columns || []).join(", ") || "—";
+    previewMeta.innerHTML =
+      `<strong>${esc(rows)}</strong> rows · columns: <code>${esc(cols)}</code>` +
+      `<br/><span class="muted">resolved: <code>${esc(data.resolved_path || "")}</code></span>`;
+    if (data.warnings && data.warnings.length) {
+      previewWarn.hidden = false;
+      previewWarn.textContent = data.warnings.join(" ");
+    } else {
+      previewWarn.hidden = true;
+      previewWarn.textContent = "";
+    }
+    const columns = data.columns?.length
+      ? data.columns
+      : Object.keys((data.samples && data.samples[0]) || {});
+    const thead = previewTable.querySelector("thead");
+    const tbody = previewTable.querySelector("tbody");
+    thead.innerHTML = `<tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>`;
+    const samples = data.samples || [];
+    tbody.innerHTML = samples.length
+      ? samples
+          .map(
+            (row) =>
+              `<tr>${columns
+                .map((c) => {
+                  const t = cellText(row[c]);
+                  return `<td title="${esc(t)}">${esc(t)}</td>`;
+                })
+                .join("")}</tr>`
+          )
+          .join("")
+      : `<tr><td colspan="${Math.max(columns.length, 1)}" class="muted">No sample rows</td></tr>`;
+    state.previewOk = true;
+    state.previewKey = previewFingerprint();
+    if (btnRegisterDs) {
+      btnRegisterDs.disabled = false;
+      btnRegisterDs.title = "Register this dataset";
+    }
+  }
+
+  async function runDatasetPreview() {
+    const path = (inpGcsPath?.value || "").trim();
+    if (!path) {
+      flash("Enter a dataset path to preview", true);
+      return;
+    }
+    if (btnPreviewDs) {
+      btnPreviewDs.disabled = true;
+      btnPreviewDs.textContent = "Previewing…";
+    }
+    try {
+      const data = await api("/v1/datasets/preview", {
+        method: "POST",
+        body: JSON.stringify({
+          gcs_path: path,
+          format: selDsFormat?.value || "jsonl",
+          limit: 5,
+        }),
+      });
+      renderDatasetPreview(data);
+      flash(`Preview ready — ${data.num_rows ?? "?"} rows. Review then register.`);
+    } catch (e) {
+      invalidatePreview();
+      if (previewBox) previewBox.hidden = true;
+      flash(e.message, true);
+    } finally {
+      if (btnPreviewDs) {
+        btnPreviewDs.disabled = false;
+        btnPreviewDs.textContent = "Preview data";
+      }
     }
   }
 
   function setBusy(form, busy) {
     const btn = form.querySelector('button[type="submit"]');
     if (!btn) return;
-    btn.disabled = busy;
+    btn.disabled = busy || (btn === btnRegisterDs && !state.previewOk);
     btn.dataset.label = btn.dataset.label || btn.textContent;
     btn.textContent = busy ? "Working…" : btn.dataset.label;
   }
@@ -226,6 +413,11 @@
     ev.preventDefault();
     const form = ev.target;
     const fd = new FormData(form);
+    if (!state.previewOk || state.previewKey !== previewFingerprint()) {
+      flash("Preview the dataset first, then register", true);
+      invalidatePreview();
+      return;
+    }
     setBusy(form, true);
     try {
       const ds = await api("/v1/datasets/register", {
@@ -236,7 +428,9 @@
           format: fd.get("format") || "jsonl",
         }),
       });
-      flash(`Registered ${ds.dataset_id}:${ds.version}`);
+      flash(`Registered ${ds.dataset_id}:${ds.version} (${ds.num_rows ?? "?"} rows)`);
+      invalidatePreview();
+      if (previewBox) previewBox.hidden = true;
       await refreshAll();
       datasetSel.value = ds.dataset_id;
       syncDatasetVersion();
@@ -247,6 +441,11 @@
     }
   });
 
+  btnPreviewDs?.addEventListener("click", () => {
+    runDatasetPreview().catch((e) => flash(e.message, true));
+  });
+  inpGcsPath?.addEventListener("input", invalidatePreview);
+  selDsFormat?.addEventListener("change", invalidatePreview);
   document.getElementById("form-job").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const form = ev.target;
@@ -276,9 +475,12 @@
           },
         }),
       });
-      flash(`Job ${job.job_id} queued — training…`);
+      flash(`Job ${job.job_id} queued — watch progress below`);
+      state.selectedJobId = job.job_id;
       await refreshJobs();
+      selectJob(job.job_id);
       maybePoll();
+      document.getElementById("job-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       flash(e.message, true);
     } finally {
@@ -354,16 +556,23 @@
 
   jobsBody.addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-deploy]");
-    if (!btn) return;
-    modelSel.value = btn.dataset.deploy;
-    document.getElementById("form-deploy").scrollIntoView({ behavior: "smooth", block: "center" });
-    flash(`Selected model ${btn.dataset.deploy} for deploy`);
+    if (btn) {
+      modelSel.value = btn.dataset.deploy;
+      document.getElementById("form-deploy").scrollIntoView({ behavior: "smooth", block: "center" });
+      flash(`Selected model ${btn.dataset.deploy} for deploy`);
+      return;
+    }
+    const row = ev.target.closest("tr.job-row[data-job]");
+    if (row) selectJob(row.dataset.job);
   });
 
   // init
   techniqueOptions(state.catalog);
   syncDatasetVersion();
+  if (state.jobs.length) {
+    const busy = state.jobs.find((j) => !TERMINAL.has(j.status));
+    selectJob((busy || state.jobs[0]).job_id);
+  }
   maybePoll();
-  // soft refresh to stay in sync
   refreshAll().catch((e) => flash(e.message, true));
 })();

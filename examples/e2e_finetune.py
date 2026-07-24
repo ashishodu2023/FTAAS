@@ -48,6 +48,24 @@ def main() -> int:
             console.print(f"[red]FAILED[/] {job.error}")
             return 1
 
+        stats = Table(title="Training statistics")
+        stats.add_column("Metric")
+        stats.add_column("Value")
+        for key in (
+            "train_loss",
+            "final_train_loss",
+            "steps",
+            "loss_first",
+            "loss_last",
+            "trainable_params",
+            "total_params",
+            "trainable_pct",
+            "duration_seconds",
+            "real",
+        ):
+            if key in (job.metrics or {}):
+                stats.add_row(key, str(job.metrics[key]))
+        console.print(stats)
         console.print("[bold]4. get_model[/]")
         # registered as <basename>-ft
         model_name = job.registered_model_name or "tiny-gpt2-ft"

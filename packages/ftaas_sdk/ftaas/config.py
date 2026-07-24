@@ -27,9 +27,9 @@ class Integrations(BaseModel):
     mlflow_tracking_uri: str = "http://127.0.0.1:5000"
     mlflow_experiment: str = "ftaas-finetune"
     ray_address: str = "auto"
-    ray_mock: bool = True
+    ray_mock: bool = False
     airflow_enabled: bool = False
-    gcs_mock: bool = True
+    gcs_mock: bool = False
     gcs_local_mirror: str = "./data/gcs_mirror"
 
 
@@ -84,9 +84,9 @@ def get_platform_config() -> PlatformConfig:
         mlflow_tracking_uri=(integ_raw.get("mlflow") or {}).get("tracking_uri", "http://127.0.0.1:5000"),
         mlflow_experiment=(integ_raw.get("mlflow") or {}).get("experiment", "ftaas-finetune"),
         ray_address=(integ_raw.get("ray") or {}).get("address", "auto"),
-        ray_mock=(integ_raw.get("ray") or {}).get("mock", True),
+        ray_mock=(integ_raw.get("ray") or {}).get("mock", False),
         airflow_enabled=(integ_raw.get("airflow") or {}).get("enabled", False),
-        gcs_mock=(integ_raw.get("gcs") or {}).get("mock", True),
+        gcs_mock=(integ_raw.get("gcs") or {}).get("mock", False),
         gcs_local_mirror=(integ_raw.get("gcs") or {}).get("local_mirror", "./data/gcs_mirror"),
     )
 

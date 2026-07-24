@@ -75,23 +75,110 @@ def _count_rows(path: Path, fmt: str) -> Optional[int]:
     return None
 
 
+def _locate_source(gcs_path: str) -> Path:
+    """Resolve a register/preview path to an existing local file."""
+    root = ensure_data_dirs()
+    src = _resolve_local_path(gcs_path, root)
+    candidates = [src]
+    if not src.is_absolute():
+        from ftaas.config import ROOT
+
+        candidates.append(ROOT / src)
+        candidates.append(Path.cwd() / src)
+        candidates.append(ROOT / gcs_path)
+    for cand in candidates:
+        if cand.exists() and cand.is_file():
+            return cand.resolve()
+    raise FileNotFoundError(
+        f"Dataset path not found: {gcs_path}. Provide an existing local file or sync gs:// to the mirror."
+    )
+
+
 def _materialize(src: Path, dest_dir: Path, dataset_id: str, version: str) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
-    if src.exists() and src.is_file():
-        dest = dest_dir / f"{dataset_id}_v{version}{src.suffix or '.jsonl'}"
-        shutil.copy2(src, dest)
-        return dest
-    # create a tiny placeholder dataset for demo when GCS mock & missing
-    dest = dest_dir / f"{dataset_id}_v{version}.jsonl"
-    sample = [
-        {"instruction": "What is FTAAS?", "input": "", "output": "Fine Tuning as a Service."},
-        {"instruction": "Explain LoRA", "input": "", "output": "Low-Rank Adaptation for PEFT."},
-        {"instruction": "Name a framework", "input": "", "output": "Hugging Face Transformers."},
-    ]
-    with dest.open("w") as f:
-        for row in sample:
-            f.write(json.dumps(row) + "\n")
+    located = src if src.exists() and src.is_file() else _locate_source(str(src))
+    dest = dest_dir / f"{dataset_id}_v{version}{located.suffix or '.jsonl'}"
+    shutil.copy2(located, dest)
     return dest
+
+
+def _preview_file(path: Path, fmt: str, limit: int = 5) -> dict:
+    """Load a few sample rows + schema hints without registering."""
+    samples: list[dict] = []
+    columns: list[str] = []
+    warnings: list[str] = []
+    fmt = (fmt or "jsonl").lower()
+
+    if fmt == "jsonl":
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    warnings.append(f"Invalid JSON on a sample line: {exc}")
+                    break
+                if isinstance(row, dict):
+                    samples.append(row)
+                    for k in row:
+                        if k not in columns:
+                            columns.append(k)
+                else:
+                    samples.append({"value": row})
+                    if "value" not in columns:
+                        columns.append("value")
+                if len(samples) >= limit:
+                    break
+    elif fmt == "json":
+        data = json.loads(path.read_text())
+        rows = data if isinstance(data, list) else [data]
+        for row in rows[:limit]:
+            if isinstance(row, dict):
+                samples.append(row)
+                for k in row:
+                    if k not in columns:
+                        columns.append(k)
+            else:
+                samples.append({"value": row})
+                if "value" not in columns:
+                    columns.append("value")
+    elif fmt == "csv":
+        import csv
+
+        with path.open(newline="") as f:
+            reader = csv.DictReader(f)
+            columns = list(reader.fieldnames or [])
+            for i, row in enumerate(reader):
+                if i >= limit:
+                    break
+                samples.append(dict(row))
+    else:
+        warnings.append(f"Preview for format '{fmt}' shows raw text only.")
+        text = path.read_text(errors="replace")[:2000]
+        samples = [{"preview": text}]
+        columns = ["preview"]
+
+    num_rows = _count_rows(path, fmt if fmt in {"jsonl", "json", "csv"} else "jsonl")
+    preferred = {"instruction", "input", "output", "text", "prompt", "response", "messages"}
+    if columns and not (preferred & set(columns)):
+        warnings.append(
+            "Columns look unusual for SFT — expected keys like instruction/input/output "
+            f"(or text/prompt). Found: {', '.join(columns)}"
+        )
+    if num_rows == 0:
+        warnings.append("File appears empty (0 rows).")
+
+    return {
+        "resolved_path": str(path),
+        "format": fmt,
+        "num_rows": num_rows,
+        "columns": columns,
+        "samples": samples,
+        "warnings": warnings,
+        "preview_limit": limit,
+    }
 
 
 @app.on_event("startup")
@@ -109,16 +196,41 @@ async def health() -> dict:
     return {"status": "ok", "service": "registry"}
 
 
+class PreviewDatasetRequest(BaseModel):
+    gcs_path: str
+    format: str = "jsonl"
+    limit: int = 5
+
+
+@app.post("/v1/datasets/preview")
+async def preview_dataset(req: PreviewDatasetRequest) -> dict:
+    """Inspect a dataset path before register_dataset — samples + row count, no side effects."""
+    limit = max(1, min(int(req.limit or 5), 20))
+    try:
+        path = _locate_source(req.gcs_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        preview = _preview_file(path, req.format, limit=limit)
+    except Exception as exc:
+        raise HTTPException(400, f"Failed to preview dataset: {exc}") from exc
+    preview["gcs_path"] = req.gcs_path
+    preview["ok"] = True
+    return preview
+
+
 @app.post("/v1/datasets/register", response_model=DatasetInfo)
 async def register_dataset(req: RegisterDatasetRequest) -> DatasetInfo:
     assert SessionLocal is not None
-    root = ensure_data_dirs()
     storage = resolve_storage_root("datasets")
 
     dataset_id = new_id("ds_")
     version = "1"
-    src = _resolve_local_path(req.gcs_path, root)
-    local = _materialize(src, Path(storage), dataset_id, version)
+    try:
+        src = _locate_source(req.gcs_path)
+        local = _materialize(src, Path(storage), dataset_id, version)
+    except FileNotFoundError as exc:
+        raise HTTPException(400, str(exc)) from exc
     num_rows = _count_rows(local, req.format)
 
     info = DatasetInfo(

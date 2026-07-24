@@ -30,11 +30,13 @@ integrations:
     experiment: ftaas-finetune
   ray:
     address: auto
-    mock: true
+    # false = try Ray; if Ray unavailable, still runs real in-process training
+    mock: false
   airflow:
     enabled: false
   gcs:
-    mock: true
+    # false = require real dataset files (no placeholder JSONL)
+    mock: false
     local_mirror: gcs_mirror
 
 frameworks:

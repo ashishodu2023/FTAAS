@@ -139,6 +139,8 @@ class FinetuneJob(BaseModel):
     registered_model_version: Optional[str] = None
     error: Optional[str] = None
     metrics: dict[str, float] = Field(default_factory=dict)
+    logs: list[dict[str, Any]] = Field(default_factory=list)
+    progress: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     tags: dict[str, str] = Field(default_factory=dict)
