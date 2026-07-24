@@ -74,12 +74,20 @@ def main() -> None:
     import uvicorn
 
     cfg = get_platform_config()
+    # Railway/Render/Fly set PORT; FTAAS_PORT overrides for local.
     port = int(
-        os.environ.get(
-            "FTAAS_PORT",
-            cfg.services.get("ftaas").port if cfg.services.get("ftaas") else 8080,
-        )
+        os.environ.get("PORT")
+        or os.environ.get("FTAAS_PORT")
+        or (cfg.services.get("ftaas").port if cfg.services.get("ftaas") else 8080)
     )
+    # Same-process API calls (runner ↔ control/registry) on the container loopback.
+    base = f"http://127.0.0.1:{port}"
+    os.environ.setdefault("FTAAS_CONTROL_URL", base)
+    os.environ.setdefault("FTAAS_REGISTRY_URL", base)
+    os.environ.setdefault("FTAAS_WORKFLOW_URL", base)
+    os.environ.setdefault("FTAAS_DEPLOY_URL", os.environ.get("FTAAS_PUBLIC_URL", base))
+    get_settings.cache_clear()
+    get_platform_config.cache_clear()
     uvicorn.run("ftaas_app.main:app", host="0.0.0.0", port=port, reload=False)
 
 

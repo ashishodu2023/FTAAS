@@ -1,0 +1,4 @@
+# Include non-Python assets for the SDK package
+include README.md
+include LICENSE
+recursive-include packages/ftaas_sdk/ftaas *.py *.typed

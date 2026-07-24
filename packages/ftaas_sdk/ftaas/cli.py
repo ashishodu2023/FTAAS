@@ -68,5 +68,9 @@ def catalog() -> None:
         rprint(json.dumps(c.catalog(), indent=2))
 
 
-if __name__ == "__main__":
+def main() -> None:
     app()
+
+
+if __name__ == "__main__":
+    main()
