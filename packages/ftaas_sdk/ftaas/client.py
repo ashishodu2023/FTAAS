@@ -143,6 +143,11 @@ class Client:
         r.raise_for_status()
         return r.json()
 
+    def cancel_job(self, job_id: str) -> FinetuneJob:
+        r = self._client.post(f"{self.control_url}/v1/jobs/{job_id}/cancel")
+        r.raise_for_status()
+        return FinetuneJob.model_validate(r.json())
+
     def list_jobs(self) -> list[FinetuneJob]:
         r = self._client.get(f"{self.control_url}/v1/jobs")
         r.raise_for_status()

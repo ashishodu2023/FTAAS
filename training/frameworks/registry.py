@@ -85,13 +85,26 @@ def _make_loss_callback(max_steps: int):
     """HF TrainerCallback that streams step/loss to the control API."""
     from transformers import TrainerCallback
 
+    from ftaas.cancel import is_cancel_requested
+
     class LossCallback(TrainerCallback):
         def __init__(self) -> None:
             self.max_steps = max_steps
             self.loss_curve: list[float] = []
             self.step_losses: list[dict[str, float]] = []
 
+        def on_step_end(self, args, state, control, **kwargs):  # noqa: ANN001
+            if is_cancel_requested():
+                control.should_training_stop = True
+                _report_job_progress(
+                    message="Stop requested — ending training after this step",
+                    step=int(state.global_step),
+                    max_steps=self.max_steps,
+                )
+
         def on_log(self, args, state, control, logs=None, **kwargs):  # noqa: ANN001
+            if is_cancel_requested():
+                control.should_training_stop = True
             if not logs:
                 return
             loss_val = logs.get("loss")

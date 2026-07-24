@@ -326,6 +326,36 @@ tr.job-row.active { background: #ffedd5; }
   align-items: baseline;
 }
 .job-detail-head h3 { margin: 0; font-size: 0.95rem; }
+.job-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+button.btn-danger {
+  background: #fff;
+  color: #b91c1c;
+  border: 1.5px solid #fecaca;
+  box-shadow: none;
+  font-weight: 800;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+button.btn-danger:hover {
+  background: #fee2e2;
+  filter: none;
+  transform: none;
+}
+button.btn-danger[hidden] { display: none; }
+.btn-stop-inline {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  margin-left: 0.25rem;
+}
+
+.pill.cancelled { background: #e5e7eb; color: #374151; }
 .log-view {
   margin: 0;
   max-height: 260px;

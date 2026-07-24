@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=fast1" />
+  <link rel="stylesheet" href="/static/styles.css?v=stop1" />
 </head>
 <body>
   <header class="hero">
@@ -130,7 +130,10 @@
       <div class="job-detail" id="job-detail">
         <div class="job-detail-head">
           <h3 id="job-detail-title">Select a job to view logs</h3>
-          <span id="job-detail-meta" class="muted"></span>
+          <div class="job-detail-actions">
+            <span id="job-detail-meta" class="muted"></span>
+            <button type="button" class="btn-danger" id="btn-stop-job" hidden>Stop training</button>
+          </div>
         </div>
         <div class="progress big" id="job-progress-wrap" hidden>
           <div class="bar" id="job-progress-bar" style="width:0%"></div>
@@ -226,6 +229,6 @@
     "endpoints": endpoints
   } | tojson }}
   </script>
-  <script src="/static/console.js?v=fast1" defer></script>
+  <script src="/static/console.js?v=stop1" defer></script>
 </body>
 </html>

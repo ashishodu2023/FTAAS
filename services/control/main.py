@@ -226,9 +226,50 @@ async def create_finetune_job(
 
 async def _schedule_job(job_id: str, pipeline_id: str) -> None:
     """schedule job according to framework → airflow / local runner."""
+    from ftaas.cancel import clear_cancel, ensure_cancel_event
     from runner.local.runner import run_finetune_pipeline
 
-    await asyncio.to_thread(run_finetune_pipeline, job_id, pipeline_id)
+    clear_cancel(job_id)
+    ensure_cancel_event(job_id)
+    try:
+        await asyncio.to_thread(run_finetune_pipeline, job_id, pipeline_id)
+    finally:
+        clear_cancel(job_id)
+
+
+@app.post("/v1/jobs/{job_id}/cancel", response_model=FinetuneJob)
+async def cancel_job(job_id: str) -> FinetuneJob:
+    """Stop a running / queued fine-tune (cooperative — finishes current train step)."""
+    from ftaas.cancel import request_cancel
+
+    assert SessionLocal is not None
+    terminal = {
+        JobStatus.SUCCEEDED.value,
+        JobStatus.FAILED.value,
+        JobStatus.CANCELLED.value,
+    }
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(select(JobRow).where(JobRow.job_id == job_id))
+        ).scalars().first()
+        if not row:
+            raise HTTPException(404, "Job not found")
+        if row.status in terminal:
+            raise HTTPException(409, f"Job already {row.status}")
+        request_cancel(job_id)
+        row.status = JobStatus.CANCELLED.value
+        row.error = "Cancelled by user"
+        logs = list(row.logs or [])
+        logs.append({"ts": utcnow().isoformat(), "message": "Stop requested — cancelling training"})
+        row.logs = logs[-200:]
+        row.progress = {
+            **(row.progress or {}),
+            "phase": "cancelled",
+            "message": "Stop requested — finishing current step",
+        }
+        row.updated_at = utcnow()
+        await session.commit()
+        return _row_to_job(row)
 
 
 @app.get("/v1/jobs", response_model=list[FinetuneJob])
@@ -271,7 +312,11 @@ async def update_job_status(job_id: str, upd: StatusUpdate) -> FinetuneJob:
         ).scalars().first()
         if not row:
             raise HTTPException(404, "Job not found")
-        if upd.status is not None:
+        # Once cancelled, never flip back to running/succeeded from late trainer patches
+        cancelled = row.status == JobStatus.CANCELLED.value
+        if upd.status is not None and not (
+            cancelled and upd.status != JobStatus.CANCELLED
+        ):
             row.status = upd.status.value
         if upd.ray_cluster is not None:
             row.ray_cluster = upd.ray_cluster
@@ -283,7 +328,7 @@ async def update_job_status(job_id: str, upd: StatusUpdate) -> FinetuneJob:
             row.metrics = {**(row.metrics or {}), **upd.metrics}
         if upd.error is not None:
             row.error = upd.error
-        if upd.progress is not None:
+        if upd.progress is not None and not cancelled:
             row.progress = {**(row.progress or {}), **upd.progress}
         if upd.log:
             ts = utcnow().isoformat()

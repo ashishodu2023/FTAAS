@@ -93,6 +93,55 @@ def test_job_logs_and_progress_fields(client_app):
     assert job.json()["progress"]["phase"] == "training"
 
 
+def test_cancel_job_endpoint(client_app):
+    import asyncio
+    import concurrent.futures
+    from datetime import datetime, timezone
+
+    from control.main import JobRow, SessionLocal
+    from ftaas.cancel import clear_cancel, is_cancel_requested
+    from ftaas.models import new_id
+
+    async def _seed() -> str:
+        assert SessionLocal is not None
+        job_id = new_id("job_")
+        now = datetime.now(timezone.utc)
+        async with SessionLocal() as session:
+            session.add(
+                JobRow(
+                    job_id=job_id,
+                    payload={
+                        "model_name": "distilgpt2",
+                        "framework": "transformers",
+                        "technique": "lora",
+                        "dataset": {"dataset_id": "ds_x", "version": "1"},
+                        "parameters": {},
+                    },
+                    status="training",
+                    metrics={},
+                    logs=[],
+                    progress={"percent": 40, "phase": "training", "message": "step 2/12"},
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+        return job_id
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        job_id = pool.submit(lambda: asyncio.run(_seed())).result()
+
+    clear_cancel(job_id)
+    r = client_app.post(f"/v1/jobs/{job_id}/cancel")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "cancelled"
+    assert is_cancel_requested(job_id)
+    again = client_app.post(f"/v1/jobs/{job_id}/cancel")
+    assert again.status_code == 409
+    clear_cancel(job_id)
+
+
 def test_register_dataset(client_app, sample_dataset):
     r = client_app.post(
         "/v1/datasets/register",
@@ -138,6 +187,17 @@ def test_prompt_format_helpers():
     assert wrapped.rstrip().endswith("### Response:")
     full = wrapped + "LoRA is a parameter-efficient fine-tuning method."
     assert _extract_response(full, wrapped) == "LoRA is a parameter-efficient fine-tuning method."
+
+
+def test_cancel_flags():
+    from ftaas.cancel import clear_cancel, is_cancel_requested, request_cancel
+
+    clear_cancel("job_test_cancel")
+    assert not is_cancel_requested("job_test_cancel")
+    request_cancel("job_test_cancel")
+    assert is_cancel_requested("job_test_cancel")
+    clear_cancel("job_test_cancel")
+    assert not is_cancel_requested("job_test_cancel")
 
 
 @pytest.mark.slow

@@ -32,6 +32,7 @@
   const jobProgressWrap = document.getElementById("job-progress-wrap");
   const jobProgressBar = document.getElementById("job-progress-bar");
   const jobLogView = document.getElementById("job-log-view");
+  const btnStopJob = document.getElementById("btn-stop-job");
 
   let pollTimer = null;
   let state = {
@@ -155,6 +156,9 @@
         const deployBtn = j.registered_model_name
           ? `<button type="button" class="btn-small" data-deploy="${esc(j.registered_model_name)}">Deploy</button>`
           : "";
+        const stopBtn = !TERMINAL.has(j.status)
+          ? `<button type="button" class="btn-danger btn-stop-inline" data-stop="${esc(j.job_id)}">Stop</button>`
+          : "";
         const prog = progressOf(j);
         const active = j.job_id === state.selectedJobId ? " active" : "";
         return `<tr data-job="${esc(j.job_id)}" class="job-row${active}">
@@ -167,7 +171,7 @@
             <small title="${esc(prog.message)}">${esc(prog.message)}</small>
           </td>
           <td><code>${esc(j.pipeline_id || "—")}</code></td>
-          <td>${deployBtn}</td>
+          <td>${stopBtn}${deployBtn}</td>
         </tr>`;
       })
       .join("");
@@ -196,6 +200,12 @@
     if (prog.step != null && prog.max_steps != null) bits.push(`step ${prog.step}/${prog.max_steps}`);
     if (prog.loss != null) bits.push(`loss ${Number(prog.loss).toFixed(4)}`);
     jobDetailMeta.textContent = bits.filter(Boolean).join(" · ");
+    if (btnStopJob) {
+      const busy = payload.status && !TERMINAL.has(payload.status);
+      btnStopJob.hidden = !busy;
+      btnStopJob.disabled = false;
+      btnStopJob.textContent = "Stop training";
+    }
     jobProgressWrap.hidden = false;
     jobProgressBar.style.width = `${percent}%`;
     let text = formatLogs(payload.logs);
@@ -207,6 +217,29 @@
       jobLogView.scrollHeight - jobLogView.scrollTop - jobLogView.clientHeight < 40;
     jobLogView.textContent = text;
     if (atBottom) jobLogView.scrollTop = jobLogView.scrollHeight;
+  }
+
+  async function stopJob(jobId) {
+    if (!jobId) return;
+    if (!window.confirm(`Stop training for ${jobId}? Current step will finish, then the job cancels.`)) {
+      return;
+    }
+    if (btnStopJob) {
+      btnStopJob.disabled = true;
+      btnStopJob.textContent = "Stopping…";
+    }
+    try {
+      await api(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+      flash(`Stop requested for ${jobId}`);
+      await refreshJobs();
+      if (state.selectedJobId === jobId) await refreshSelectedLogs();
+    } catch (e) {
+      flash(e.message, true);
+      if (btnStopJob) {
+        btnStopJob.disabled = false;
+        btnStopJob.textContent = "Stop training";
+      }
+    }
   }
 
   async function refreshSelectedLogs() {
@@ -557,6 +590,13 @@
   });
 
   jobsBody.addEventListener("click", (ev) => {
+    const stop = ev.target.closest("[data-stop]");
+    if (stop) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      stopJob(stop.dataset.stop).catch((e) => flash(e.message, true));
+      return;
+    }
     const btn = ev.target.closest("[data-deploy]");
     if (btn) {
       modelSel.value = btn.dataset.deploy;
@@ -566,6 +606,10 @@
     }
     const row = ev.target.closest("tr.job-row[data-job]");
     if (row) selectJob(row.dataset.job);
+  });
+
+  btnStopJob?.addEventListener("click", () => {
+    if (state.selectedJobId) stopJob(state.selectedJobId).catch((e) => flash(e.message, true));
   });
 
   // init

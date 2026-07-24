@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.cancel import JobCancelled, is_cancel_requested
 from ftaas.models import Framework, HyperParameters, RegisterModelRequest, Technique
 from training.ray_jobs.cluster import (
     create_cluster,
@@ -108,8 +109,14 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
             set_status(log=message, progress=progress)
             logger.info("[%s] %s", job_id, message)
 
+        def ensure_not_cancelled(where: str) -> None:
+            if is_cancel_requested(job_id):
+                raise JobCancelled(f"Cancelled during {where}")
+
         try:
             job = client.get(f"{control_url}/v1/jobs/{job_id}").json()
+            if job.get("status") == "cancelled" or is_cancel_requested(job_id):
+                raise JobCancelled("Cancelled before start")
             set_status("running", log="Pipeline started", progress={"percent": 5, "phase": "running", "message": "Pipeline started"})
 
             ds = job["dataset"]
@@ -118,6 +125,7 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 percent=10,
                 phase="download",
             )
+            ensure_not_cancelled("download")
             dl = client.get(
                 f"{registry_url}/v1/datasets/{ds['dataset_id']}/download",
                 params={"version": ds.get("version") or "1"},
@@ -137,6 +145,7 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 percent=25,
                 phase="prepare",
             )
+            ensure_not_cancelled("prepare")
 
             cluster = create_cluster(job["framework"])
             set_status(
@@ -163,6 +172,7 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
             )
             log(f"Training job submitted ({handle.job_id})", percent=35, phase="training")
             result = poll_job_status(handle.job_id)
+            ensure_not_cancelled("training")
             log(
                 f"Training finished backend={(result.statistics or {}).get('backend')}",
                 percent=75,
@@ -236,7 +246,39 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 (result.statistics or {}).get("backend"),
             )
 
+        except JobCancelled as exc:
+            logger.warning("Job %s cancelled: %s", job_id, exc)
+            try:
+                set_status(
+                    "cancelled",
+                    error="Cancelled by user",
+                    log=f"STOPPED: {exc}",
+                    progress={"percent": 100, "phase": "cancelled", "message": "Stopped by user"},
+                )
+                client.post(
+                    f"{workflow_url}/v1/pipelines/{pipeline_id}/complete",
+                    params={"status": "cancelled"},
+                )
+            except Exception:
+                pass
+
         except Exception as exc:
+            if is_cancel_requested(job_id):
+                logger.warning("Job %s cancelled during error path: %s", job_id, exc)
+                try:
+                    set_status(
+                        "cancelled",
+                        error="Cancelled by user",
+                        log="STOPPED by user",
+                        progress={"percent": 100, "phase": "cancelled", "message": "Stopped by user"},
+                    )
+                    client.post(
+                        f"{workflow_url}/v1/pipelines/{pipeline_id}/complete",
+                        params={"status": "cancelled"},
+                    )
+                except Exception:
+                    pass
+                return
             logger.error("Job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
             try:
                 set_status(
