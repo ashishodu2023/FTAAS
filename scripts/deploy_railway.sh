@@ -1,10 +1,6 @@
-# Deploy FTAAS to Railway and attach ftaas.org
-#
-# 1) Login (one-time):
-#      railway login --browserless
-# 2) From repo root:
-#      ./scripts/deploy_railway.sh
-# 3) Point DNS at Railway (see printed instructions).
+#!/usr/bin/env bash
+# Deploy FTAAS to Railway and prepare ftaas.org DNS.
+# Run one command per line in your terminal (no trailing comments).
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,32 +12,37 @@ if ! command -v railway >/dev/null 2>&1; then
 fi
 
 if ! railway whoami >/dev/null 2>&1; then
-  echo "Not logged in. Run: railway login --browserless" >&2
+  echo "Not logged in. Run alone:"
+  echo "  railway login --browserless"
   exit 1
 fi
 
-# Create/link project if needed
 if ! railway status >/dev/null 2>&1; then
   echo "==> Creating Railway project ftaas"
-  railway init --name ftaas || railway link
+  railway init -n ftaas
+fi
+
+# Empty project from `init` has no service — create + link one.
+if ! railway service status >/dev/null 2>&1; then
+  echo "==> Creating service ftaas"
+  railway add --service ftaas
+  railway service link ftaas
 fi
 
 echo "==> Setting production variables"
-railway variables set \
+railway variable set \
   FTAAS_PUBLIC_URL=https://ftaas.org \
-  FTAAS_DATA_DIR=/data \
+  FTAAS_DATA_DIR=/app/data \
   PYTHONPATH=/app:/app/packages/ftaas_sdk:/app/services
 
 echo "==> Deploying"
-railway up --detach --ci --message "Deploy FTAAS console to ftaas.org"
+railway up --detach --ci -m "Deploy FTAAS console to ftaas.org"
 
-echo "==> Generating Railway domain (if none)"
-railway domain 2>/dev/null || true
+echo "==> Domains"
+railway domain ftaas.org || true
+railway domain www.ftaas.org || true
+railway domain || true
 
 echo
-echo "Next — custom domain:"
-echo "  railway domain add ftaas.org"
-echo "  railway domain add www.ftaas.org"
-echo
-echo "Then at your registrar DNS for ftaas.org set the CNAME/A records Railway prints."
-echo "Also set: railway variables set FTAAS_PUBLIC_URL=https://ftaas.org"
+echo "Done. Add the DNS records Railway printed at your registrar."
+echo "Verify later with:  curl -sf https://ftaas.org/health"

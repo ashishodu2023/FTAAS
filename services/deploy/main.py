@@ -11,7 +11,7 @@ from sqlalchemy import DateTime, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings, sqlite_url
 from ftaas.models import (
     CreateEndpointRequest,
     EndpointInfo,
@@ -51,11 +51,8 @@ SessionLocal: async_sessionmaker[AsyncSession] | None = None
 @app.on_event("startup")
 async def startup() -> None:
     global engine, SessionLocal
-    root = ensure_data_dirs()
-    cfg = get_platform_config()
-    svc = cfg.services.get("deploy")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/deploy.db"
-    engine = create_async_engine(db_url, echo=False)
+    ensure_data_dirs()
+    engine = create_async_engine(sqlite_url("deploy"), echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

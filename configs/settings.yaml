@@ -10,27 +10,23 @@ services:
   control:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/control.db
   registry:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/registry.db
-    storage_root: ./data/datasets
   workflow:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/workflow.db
   deploy:
     host: 0.0.0.0
     port: 8080
-    db_url: sqlite+aiosqlite:///./data/deploy.db
   console:
     host: 0.0.0.0
     port: 8080
 
 integrations:
   mlflow:
-    tracking_uri: sqlite:///./data/mlflow.db
+    # resolved at runtime under FTAAS_DATA_DIR
+    tracking_uri: ""
     experiment: ftaas-finetune
   ray:
     address: auto
@@ -39,7 +35,7 @@ integrations:
     enabled: false
   gcs:
     mock: true
-    local_mirror: ./data/gcs_mirror
+    local_mirror: gcs_mirror
 
 frameworks:
   - transformers

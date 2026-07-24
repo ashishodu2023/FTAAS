@@ -102,7 +102,7 @@ def get_platform_config() -> PlatformConfig:
 
 def ensure_data_dirs() -> Path:
     settings = get_settings()
-    root = Path(settings.data_dir)
+    root = Path(settings.data_dir).expanduser().resolve()
     for sub in (
         "",
         "datasets",
@@ -114,3 +114,17 @@ def ensure_data_dirs() -> Path:
     ):
         (root / sub).mkdir(parents=True, exist_ok=True)
     return root
+
+
+def sqlite_url(db_name: str) -> str:
+    """Absolute aiosqlite URL under FTAAS_DATA_DIR (ignores cwd-relative yaml paths)."""
+    root = ensure_data_dirs()
+    path = (root / f"{db_name}.db").resolve()
+    return f"sqlite+aiosqlite:///{path}"
+
+
+def resolve_storage_root(fallback_sub: str = "datasets") -> Path:
+    root = ensure_data_dirs()
+    dest = root / fallback_sub
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest

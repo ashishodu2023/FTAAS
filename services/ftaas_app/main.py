@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, Mount
 
-from ftaas.config import ensure_data_dirs, get_platform_config
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
 
 
 async def _run_startup(sub: FastAPI) -> None:

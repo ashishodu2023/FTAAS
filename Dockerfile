@@ -14,10 +14,10 @@ RUN pip install --no-cache-dir \
 COPY . .
 
 ENV PYTHONPATH=/app:/app/packages/ftaas_sdk:/app/services
-ENV FTAAS_DATA_DIR=/data
+ENV FTAAS_DATA_DIR=/app/data
 ENV PORT=8080
 
-RUN mkdir -p /data
+RUN mkdir -p /app/data
 
 EXPOSE 8080
 

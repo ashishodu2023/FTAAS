@@ -15,7 +15,7 @@ from sqlalchemy import DateTime, Integer, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+from ftaas.config import ensure_data_dirs, get_platform_config, get_settings, resolve_storage_root, sqlite_url
 from ftaas.models import DatasetInfo, RegisterDatasetRequest, new_id, utcnow
 
 app = FastAPI(title="FTAAS Registry", version="0.1.0", description="Dataset registry (GCS path → id:version)")
@@ -97,11 +97,8 @@ def _materialize(src: Path, dest_dir: Path, dataset_id: str, version: str) -> Pa
 @app.on_event("startup")
 async def startup() -> None:
     global engine, SessionLocal
-    root = ensure_data_dirs()
-    cfg = get_platform_config()
-    svc = cfg.services.get("registry")
-    db_url = svc.db_url if svc else f"sqlite+aiosqlite:///{root}/registry.db"
-    engine = create_async_engine(db_url, echo=False)
+    ensure_data_dirs()
+    engine = create_async_engine(sqlite_url("registry"), echo=False)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -116,8 +113,7 @@ async def health() -> dict:
 async def register_dataset(req: RegisterDatasetRequest) -> DatasetInfo:
     assert SessionLocal is not None
     root = ensure_data_dirs()
-    cfg = get_platform_config()
-    storage = Path(cfg.services["registry"].storage_root) if cfg.services.get("registry") and cfg.services["registry"].storage_root else root / "datasets"
+    storage = resolve_storage_root("datasets")
 
     dataset_id = new_id("ds_")
     version = "1"
