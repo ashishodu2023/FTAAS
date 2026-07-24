@@ -362,6 +362,10 @@ button.btn-danger[hidden] { display: none; }
 }
 
 .pill.cancelled { background: #e5e7eb; color: #374151; }
+.job-detail-active {
+  outline: 2px solid #fb923c;
+  box-shadow: 0 0 0 4px rgba(251, 146, 60, 0.18);
+}
 .log-view {
   margin: 0;
   max-height: 260px;
@@ -375,6 +379,44 @@ button.btn-danger[hidden] { display: none; }
   line-height: 1.45;
   white-space: pre-wrap;
 }
+.log-view-modal { max-height: min(60vh, 480px); }
+
+.log-modal[hidden] { display: none !important; }
+.log-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.log-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 42, 58, 0.45);
+}
+.log-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(860px, 100%);
+  max-height: min(85vh, 720px);
+  overflow: auto;
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow: 0 24px 60px rgba(28, 42, 58, 0.22);
+}
+.log-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+.log-modal-head h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.log-modal-head p { margin: 0; font-size: 0.85rem; }
+body.modal-open { overflow: hidden; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 .chip {

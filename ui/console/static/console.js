@@ -33,6 +33,12 @@
   const jobProgressBar = document.getElementById("job-progress-bar");
   const jobLogView = document.getElementById("job-log-view");
   const btnStopJob = document.getElementById("btn-stop-job");
+  const logModal = document.getElementById("log-modal");
+  const logModalTitle = document.getElementById("log-modal-title");
+  const logModalMeta = document.getElementById("log-modal-meta");
+  const logModalBody = document.getElementById("log-modal-body");
+  const logModalProgressWrap = document.getElementById("log-modal-progress-wrap");
+  const logModalProgressBar = document.getElementById("log-modal-progress-bar");
 
   let pollTimer = null;
   let state = {
@@ -177,7 +183,7 @@
       })
       .join("");
     if (state.selectedJobId) {
-      refreshSelectedLogs().catch(() => {});
+      refreshSelectedLogs({ openModal: false }).catch(() => {});
     }
   }
 
@@ -191,16 +197,19 @@
       .join("\n");
   }
 
-  function paintJobDetail(payload) {
+  function paintJobDetail(payload, { openModal = false } = {}) {
     if (!jobLogView) return;
     const prog = payload.progress || {};
     const percent = Math.max(0, Math.min(100, Number(prog.percent) || 0));
-    jobDetailTitle.textContent = payload.job_id || "Job";
+    const title = payload.job_id || "Job";
     const bits = [payload.status || ""];
     if (prog.phase) bits.push(prog.phase);
     if (prog.step != null && prog.max_steps != null) bits.push(`step ${prog.step}/${prog.max_steps}`);
     if (prog.loss != null) bits.push(`loss ${Number(prog.loss).toFixed(4)}`);
-    jobDetailMeta.textContent = bits.filter(Boolean).join(" · ");
+    const meta = bits.filter(Boolean).join(" · ");
+
+    jobDetailTitle.textContent = title;
+    jobDetailMeta.textContent = meta;
     if (btnStopJob) {
       const busy = payload.status && !TERMINAL.has(payload.status);
       btnStopJob.hidden = !busy;
@@ -218,6 +227,53 @@
       jobLogView.scrollHeight - jobLogView.scrollTop - jobLogView.clientHeight < 40;
     jobLogView.textContent = text;
     if (atBottom) jobLogView.scrollTop = jobLogView.scrollHeight;
+
+    document.getElementById("job-detail")?.classList.add("job-detail-active");
+
+    if (logModalTitle) logModalTitle.textContent = `Logs · ${title}`;
+    if (logModalMeta) logModalMeta.textContent = meta || "—";
+    if (logModalBody) {
+      logModalBody.textContent = text;
+      logModalBody.scrollTop = logModalBody.scrollHeight;
+    }
+    if (logModalProgressWrap && logModalProgressBar) {
+      logModalProgressWrap.hidden = false;
+      logModalProgressBar.style.width = `${percent}%`;
+    }
+    if (openModal) openLogModal();
+  }
+
+  function openLogModal() {
+    if (!logModal) return;
+    logModal.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+
+  function closeLogModal() {
+    if (!logModal) return;
+    logModal.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+
+  async function refreshSelectedLogs(opts = {}) {
+    if (!state.selectedJobId) return;
+    const data = await api(`/v1/jobs/${encodeURIComponent(state.selectedJobId)}/logs`);
+    paintJobDetail(data, opts);
+  }
+
+  function selectJob(jobId, { scroll = false, openModal = false } = {}) {
+    state.selectedJobId = jobId;
+    jobsBody.querySelectorAll("tr.job-row").forEach((tr) => {
+      tr.classList.toggle("active", tr.dataset.job === jobId);
+    });
+    refreshSelectedLogs({ openModal })
+      .then(() => {
+        if (scroll && !openModal) {
+          document.getElementById("job-detail")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        if (openModal) flash(`Logs for ${jobId}`);
+      })
+      .catch((e) => flash(e.message, true));
   }
 
   async function stopJob(jobId) {
@@ -241,26 +297,6 @@
         btnStopJob.textContent = "Stop training";
       }
     }
-  }
-
-  async function refreshSelectedLogs() {
-    if (!state.selectedJobId) return;
-    const data = await api(`/v1/jobs/${encodeURIComponent(state.selectedJobId)}/logs`);
-    paintJobDetail(data);
-  }
-
-  function selectJob(jobId, { scroll = false } = {}) {
-    state.selectedJobId = jobId;
-    jobsBody.querySelectorAll("tr.job-row").forEach((tr) => {
-      tr.classList.toggle("active", tr.dataset.job === jobId);
-    });
-    refreshSelectedLogs()
-      .then(() => {
-        if (scroll) {
-          document.getElementById("job-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-      })
-      .catch((e) => flash(e.message, true));
   }
 
   function renderModels(models) {
@@ -608,7 +644,7 @@
     if (logsBtn) {
       ev.preventDefault();
       ev.stopPropagation();
-      selectJob(logsBtn.dataset.logs, { scroll: true });
+      selectJob(logsBtn.dataset.logs, { openModal: true });
       return;
     }
     const btn = ev.target.closest("[data-deploy]");
@@ -624,6 +660,13 @@
 
   btnStopJob?.addEventListener("click", () => {
     if (state.selectedJobId) stopJob(state.selectedJobId).catch((e) => flash(e.message, true));
+  });
+
+  document.querySelectorAll("[data-close-log-modal]").forEach((el) => {
+    el.addEventListener("click", () => closeLogModal());
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && logModal && !logModal.hidden) closeLogModal();
   });
 
   // init
