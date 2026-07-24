@@ -468,10 +468,12 @@
             version: String(fd.get("dataset_version") || "1"),
           },
           parameters: {
-            max_steps: Number(fd.get("max_steps") || 10),
-            learning_rate: Number(fd.get("learning_rate") || 2e-4),
+            max_steps: Number(fd.get("max_steps") || 12),
+            learning_rate: Number(fd.get("learning_rate") || 1e-3),
             lora_r: loraR,
             lora_alpha: loraR * 2,
+            per_device_train_batch_size: 1,
+            max_seq_length: 64,
           },
         }),
       });

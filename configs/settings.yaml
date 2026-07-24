@@ -76,13 +76,14 @@ techniques:
 defaults:
   framework: transformers
   technique: lora
-  # gpt2 can learn short alpaca demos; sshleifer/tiny-gpt2 is tests-only (cannot speak English)
-  model_name: gpt2
+  # distilgpt2 ≈2× faster than gpt2 on CPU; still learns short alpaca demos
+  model_name: distilgpt2
   hyperparameters:
-    learning_rate: 5.0e-4
+    learning_rate: 1.0e-3
     num_train_epochs: 1
-    per_device_train_batch_size: 2
+    per_device_train_batch_size: 1
     lora_r: 8
     lora_alpha: 16
-    max_steps: 40
+    max_steps: 12
+    max_seq_length: 64
     output_dir: ./data/outputs

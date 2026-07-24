@@ -75,7 +75,7 @@ def _report_job_progress(
         httpx.patch(
             f"{control}/v1/jobs/{job_id}/status",
             json={"log": message, "progress": progress, "status": "training"},
-            timeout=5.0,
+            timeout=0.8,
         )
     except Exception:
         pass
@@ -106,12 +106,14 @@ def _make_loss_callback(max_steps: int):
             self.loss_curve.append(loss)
             step = int(state.global_step)
             self.step_losses.append({"step": float(step), "loss": loss})
-            _report_job_progress(
-                message=f"step {step}/{self.max_steps} loss={loss:.4f}",
-                step=step,
-                max_steps=self.max_steps,
-                loss=loss,
-            )
+            # Avoid blocking every step on slow control RTT; still update often enough for UI
+            if step == 1 or step == self.max_steps or step % 2 == 0:
+                _report_job_progress(
+                    message=f"step {step}/{self.max_steps} loss={loss:.4f}",
+                    step=step,
+                    max_steps=self.max_steps,
+                    loss=loss,
+                )
 
     return LossCallback()
 
@@ -220,19 +222,23 @@ def _real_causal_lm_train(
         TrainerCallback,
         TrainingArguments,
     ) = _require_torch_stack()
-    _ = TrainerCallback  # available via _require_torch_stack; progress uses _make_loss_callback
+    _ = TrainerCallback
 
     started = time.perf_counter()
     rows = _load_rows(dataset_path)
     texts = [_row_to_text(r) for r in rows]
-    seq_len = min(int(params.max_seq_length), 128)
+    # CPU demos: short seq + dynamic padding (fixed max_length pad was much slower)
+    on_cpu = not torch.cuda.is_available()
+    seq_cap = 64 if on_cpu else 128
+    seq_len = min(int(params.max_seq_length or 512), seq_cap)
+    train_bs = 1 if on_cpu else max(1, int(params.per_device_train_batch_size))
 
     tok = AutoTokenizer.from_pretrained(model_name)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
     def tokenize(batch: dict) -> dict:
-        return tok(batch["text"], truncation=True, max_length=seq_len, padding="max_length")
+        return tok(batch["text"], truncation=True, max_length=seq_len)
 
     ds = Dataset.from_dict({"text": texts}).map(tokenize, batched=True, remove_columns=["text"])
     model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -270,14 +276,18 @@ def _real_causal_lm_train(
     args = TrainingArguments(
         output_dir=str(out),
         max_steps=params.max_steps,
-        per_device_train_batch_size=params.per_device_train_batch_size,
+        per_device_train_batch_size=train_bs,
         learning_rate=params.learning_rate,
         logging_steps=max(1, params.logging_steps),
-        save_steps=max(params.save_steps, params.max_steps),
+        save_strategy="no",
         report_to=[],
         remove_unused_columns=False,
         seed=params.seed,
         dataloader_pin_memory=False,
+        dataloader_num_workers=0,
+        disable_tqdm=True,
+        skip_memory_metrics=True,
+        use_cpu=on_cpu,
     )
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
     trainer = Trainer(
@@ -317,7 +327,7 @@ def _real_causal_lm_train(
         "num_examples": len(rows),
         "max_steps": params.max_steps,
         "max_seq_length": seq_len,
-        "batch_size": params.per_device_train_batch_size,
+        "batch_size": train_bs,
         "learning_rate": params.learning_rate,
         "lora_r": params.lora_r if use_peft else None,
         "final_train_loss": metrics.get("train_loss"),
@@ -382,7 +392,9 @@ def _real_trl_sft(
     started = time.perf_counter()
     rows = _load_rows(dataset_path)
     texts = [_row_to_text(r) for r in rows]
-    seq_len = min(int(params.max_seq_length), 128)
+    on_cpu = not torch.cuda.is_available()
+    seq_len = min(int(params.max_seq_length or 512), 64 if on_cpu else 128)
+    train_bs = 1 if on_cpu else max(1, int(params.per_device_train_batch_size))
     tok = AutoTokenizer.from_pretrained(model_name)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
@@ -408,13 +420,17 @@ def _real_trl_sft(
     args = SFTConfig(
         output_dir=str(out),
         max_steps=params.max_steps,
-        per_device_train_batch_size=params.per_device_train_batch_size,
+        per_device_train_batch_size=train_bs,
         learning_rate=params.learning_rate,
         logging_steps=max(1, params.logging_steps),
+        save_strategy="no",
         report_to=[],
         seed=params.seed,
         max_length=seq_len,
         dataset_text_field="text",
+        dataloader_num_workers=0,
+        disable_tqdm=True,
+        use_cpu=on_cpu,
     )
     trainer = SFTTrainer(
         model=model,

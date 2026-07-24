@@ -61,11 +61,11 @@ with Client() as c:
     print(preview["num_rows"], preview["columns"])
     ds = c.register_dataset("examples/data/alpaca_sample.jsonl", name="alpaca")
     job = c.create_finetune_job(
-        model_name="gpt2",
+        model_name="distilgpt2",
         dataset=ds,
         framework=Framework.TRANSFORMERS,
         technique=Technique.LORA,
-        parameters=HyperParameters(max_steps=40),
+        parameters=HyperParameters(max_steps=12, max_seq_length=64),
     )
     job = c.wait_for_job(job.job_id)
     print(c.get_job_logs(job.job_id)["progress"])
