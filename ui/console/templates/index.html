@@ -19,24 +19,33 @@
     <p class="lede">Register a dataset, choose a framework &amp; PEFT technique, train on Ray, track with MLflow, deploy with vLLM / Ray Serve, and prompt via UI or API.</p>
   </header>
 
-  {% if error %}
-  <div class="banner warn">Backend unreachable: {{ error }}. Start with <code>./scripts/start_all.sh</code>.</div>
-  {% endif %}
+  <div id="flash" class="banner {% if flash_type == 'err' %}err{% endif %}" {% if not flash and not error %}hidden{% endif %}>
+    {% if error %}Backend unreachable: {{ error }}{% elif flash %}{{ flash }}{% endif %}
+  </div>
 
   <main class="grid">
     <section class="panel">
       <h2>1. Register dataset</h2>
-      <form method="post" action="/register-dataset">
+      <form id="form-register" data-action="register">
         <label>GCS / local path
           <input name="gcs_path" required placeholder="examples/data/alpaca_sample.jsonl" value="examples/data/alpaca_sample.jsonl" />
         </label>
-        <label>Name <input name="name" placeholder="alpaca-sample" /></label>
+        <label>Name <input name="name" placeholder="alpaca-sample" value="alpaca-sample" /></label>
+        <label>Format
+          <select name="format">
+            <option value="jsonl" selected>jsonl</option>
+            <option value="json">json</option>
+            <option value="csv">csv</option>
+          </select>
+        </label>
         <button type="submit">register_dataset</button>
       </form>
       <h3>Datasets</h3>
-      <ul class="list">
+      <ul class="list" id="list-datasets">
         {% for d in datasets %}
-        <li><code>{{ d.dataset_id }}:{{ d.version }}</code> — {{ d.name }} ({{ d.num_rows or '?' }} rows)</li>
+        <li data-id="{{ d.dataset_id }}" data-version="{{ d.version }}">
+          <code>{{ d.dataset_id }}:{{ d.version }}</code> — {{ d.name }} ({{ d.num_rows or '?' }} rows)
+        </li>
         {% else %}
         <li class="muted">No datasets yet</li>
         {% endfor %}
@@ -45,89 +54,80 @@
 
     <section class="panel">
       <h2>2. Create fine-tune job</h2>
-      <form method="post" action="/create-job">
+      <form id="form-job" data-action="create-job">
         <label>Model
           <input name="model_name" value="{{ defaults.get('model_name', 'sshleifer/tiny-gpt2') }}" required />
         </label>
         <label>Framework
-          <select name="framework">
+          <select name="framework" id="sel-framework">
             {% for f in catalog.get('frameworks', ['transformers','trl','verl','llama-factory','unsloth','axolotl']) %}
             <option value="{{ f }}" {% if f == defaults.get('framework') %}selected{% endif %}>{{ f }}</option>
             {% endfor %}
           </select>
         </label>
         <label>Technique
-          <select name="technique">
-            <optgroup label="PEFT">
-              <option value="lora" selected>LoRA</option>
-              <option value="qlora">QLoRA</option>
-              <option value="dora">DoRA</option>
-              <option value="prefix_tuning">Prefix Tuning</option>
-              <option value="ia3">IA3</option>
-            </optgroup>
-            <optgroup label="Full">
-              <option value="16bit_full">16-bit Full</option>
-              <option value="frozen">Frozen</option>
-            </optgroup>
-            <optgroup label="Instruction">
-              <option value="sft">SFT</option>
-              <option value="self_instruct">Self-Instruct</option>
-            </optgroup>
-            <optgroup label="Alignment">
-              <option value="dpo">DPO</option>
-              <option value="ppo">PPO</option>
-              <option value="orpo">ORPO</option>
-            </optgroup>
+          <select name="technique" id="sel-technique"></select>
+        </label>
+        <label>Dataset
+          <select name="dataset_id" id="sel-dataset" required>
+            {% for d in datasets %}
+            <option value="{{ d.dataset_id }}" data-version="{{ d.version }}">{{ d.name or d.dataset_id }} ({{ d.dataset_id }}:{{ d.version }})</option>
+            {% endfor %}
           </select>
         </label>
-        <label>Dataset ID
-          <input name="dataset_id" required placeholder="ds_…" value="{{ datasets[0].dataset_id if datasets else '' }}" />
-        </label>
-        <label>Version <input name="dataset_version" value="{{ datasets[0].version if datasets else '1' }}" /></label>
+        <label>Version <input name="dataset_version" id="inp-dataset-version" value="{{ datasets[0].version if datasets else '1' }}" /></label>
         <div class="row">
-          <label>max_steps <input type="number" name="max_steps" value="10" /></label>
-          <label>lr <input name="learning_rate" value="0.0002" /></label>
-          <label>lora_r <input type="number" name="lora_r" value="8" /></label>
+          <label>max_steps <input type="number" name="max_steps" value="{{ defaults.get('hyperparameters', {}).get('max_steps', 10) }}" /></label>
+          <label>lr <input name="learning_rate" value="{{ defaults.get('hyperparameters', {}).get('learning_rate', 0.0002) }}" /></label>
+          <label>lora_r <input type="number" name="lora_r" value="{{ defaults.get('hyperparameters', {}).get('lora_r', 8) }}" /></label>
         </div>
         <button type="submit">create_finetune_job</button>
       </form>
     </section>
 
     <section class="panel wide">
-      <h2>Jobs</h2>
+      <div class="panel-head">
+        <h2>Jobs</h2>
+        <button type="button" class="btn-ghost" id="btn-refresh-jobs">Refresh</button>
+      </div>
       <table>
         <thead>
-          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Metrics</th><th>Pipeline</th></tr>
+          <tr><th>Job</th><th>Model</th><th>FW / Tech</th><th>Status</th><th>Metrics</th><th>Pipeline</th><th></th></tr>
         </thead>
-        <tbody>
+        <tbody id="tbody-jobs">
           {% for j in jobs %}
-          <tr>
+          <tr data-job="{{ j.job_id }}">
             <td><code>{{ j.job_id }}</code></td>
             <td>{{ j.model_name }}</td>
             <td>{{ j.framework }} / {{ j.technique }}</td>
             <td><span class="pill {{ j.status }}">{{ j.status }}</span></td>
             <td><code>{{ j.metrics }}</code></td>
             <td><code>{{ j.pipeline_id or '—' }}</code></td>
+            <td>{% if j.registered_model_name %}<button type="button" class="btn-small" data-deploy="{{ j.registered_model_name }}">Deploy</button>{% endif %}</td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="muted">No jobs yet</td></tr>
+          <tr class="empty"><td colspan="7" class="muted">No jobs yet</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </section>
 
     <section class="panel">
-      <h2>3. Registered models</h2>
-      <ul class="list">
+      <h2>3. Deploy model</h2>
+      <ul class="list" id="list-models">
         {% for m in models %}
-        <li><code>{{ m.model_name }}</code> v{{ m.version }} — run {{ m.run_id }}</li>
+        <li><code>{{ m.model_name }}</code> v{{ m.version }}</li>
         {% else %}
         <li class="muted">No models registered</li>
         {% endfor %}
       </ul>
-      <form method="post" action="/deploy">
-        <label>Deploy model
-          <input name="model_name" required value="{{ models[0].model_name if models else '' }}" placeholder="tiny-gpt2-ft" />
+      <form id="form-deploy" data-action="deploy">
+        <label>Model
+          <select name="model_name" id="sel-model" required>
+            {% for m in models %}
+            <option value="{{ m.model_name }}">{{ m.model_name }} v{{ m.version }}</option>
+            {% endfor %}
+          </select>
         </label>
         <label>Inference framework
           <select name="inference_framework">
@@ -142,33 +142,41 @@
 
     <section class="panel">
       <h2>4. Prompt (UI / API)</h2>
-      <ul class="list">
+      <ul class="list" id="list-endpoints">
         {% for e in endpoints %}
         <li><code>{{ e.endpoint_id }}</code> — {{ e.model_name }}@{{ e.inference_framework }}</li>
         {% else %}
         <li class="muted">No endpoints</li>
         {% endfor %}
       </ul>
-      <form method="post" action="/prompt">
-        <label>Endpoint ID
-          <input name="endpoint_id" required value="{{ endpoints[0].endpoint_id if endpoints else '' }}" />
+      <form id="form-prompt" data-action="prompt">
+        <label>Endpoint
+          <select name="endpoint_id" id="sel-endpoint" required>
+            {% for e in endpoints %}
+            <option value="{{ e.endpoint_id }}">{{ e.endpoint_id }} — {{ e.model_name }}</option>
+            {% endfor %}
+          </select>
         </label>
         <label>Prompt
-          <textarea name="prompt" rows="3" required>What is LoRA?</textarea>
+          <textarea name="prompt" id="inp-prompt" rows="3" required>What is LoRA?</textarea>
         </label>
         <button type="submit">prompt</button>
       </form>
+      <div id="prompt-result" class="result" hidden>
+        <h3>Completion</h3>
+        <pre id="prompt-out"></pre>
+      </div>
     </section>
 
     <section class="panel wide">
       <h2>Catalog</h2>
-      <div class="chips">
+      <div class="chips" id="chips-frameworks">
         {% for f in catalog.get('frameworks', []) %}
         <span class="chip">{{ f }}</span>
         {% endfor %}
       </div>
       <h3>Roadmap</h3>
-      <ol>
+      <ol id="list-phases">
         {% for p in catalog.get('phases', []) %}
         <li>Phase {{ p.phase }} — {{ p.name }} <em>({{ p.status }})</em></li>
         {% endfor %}
@@ -179,5 +187,17 @@
   <footer>
     <span>FTAAS · Registry · Control · Workflow · Deploy · Ray · MLflow · vLLM</span>
   </footer>
+
+  <script id="boot" type="application/json">
+  {{ {
+    "catalog": catalog,
+    "defaults": defaults,
+    "jobs": jobs,
+    "datasets": datasets,
+    "models": models,
+    "endpoints": endpoints
+  } | tojson }}
+  </script>
+  <script src="/static/console.js" defer></script>
 </body>
 </html>

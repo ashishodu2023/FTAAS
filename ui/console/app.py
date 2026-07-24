@@ -1,13 +1,12 @@
-"""FTAAS web UI — job setup, config, tracking, dataset management, prompting."""
+"""FTAAS Console — serves UI; browser talks to /v1/* APIs on the same gateway."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import httpx
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -33,8 +32,13 @@ async def health():
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    """SSR bootstrap; console.js refreshes live from /v1 APIs."""
     control_url, registry_url, deploy_url = _urls()
-    catalog = jobs = datasets = models = endpoints = {}
+    catalog: dict = {}
+    jobs: list = []
+    datasets: list = []
+    models: list = []
+    endpoints: list = []
     err = None
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
@@ -45,8 +49,19 @@ async def home(request: Request):
             endpoints = (await c.get(f"{deploy_url}/v1/endpoints")).json()
     except Exception as e:
         err = str(e)
-        catalog = get_platform_config().model_dump()
-        jobs, datasets, models, endpoints = [], [], [], []
+        raw = get_platform_config()
+        catalog = {
+            "frameworks": raw.frameworks,
+            "techniques": raw.techniques,
+            "defaults": raw.defaults,
+            "phases": [
+                {"phase": 0, "name": "Fine-Tuning & RL Templates", "status": "available"},
+                {"phase": 1, "name": "Fine-Tuning UI", "status": "available"},
+                {"phase": 2, "name": "Fine-Tune & Evaluate", "status": "available"},
+                {"phase": 3, "name": "Resource Optimization", "status": "planned"},
+                {"phase": 4, "name": "Sweeps & Optimization", "status": "planned"},
+            ],
+        }
 
     return templates.TemplateResponse(
         request,
@@ -59,86 +74,9 @@ async def home(request: Request):
             "endpoints": endpoints,
             "error": err,
             "defaults": (catalog.get("defaults") if isinstance(catalog, dict) else {}) or {},
+            "flash": request.query_params.get("flash"),
+            "flash_type": request.query_params.get("type", "ok"),
         },
-    )
-
-
-@app.post("/register-dataset")
-async def register_dataset(
-    gcs_path: str = Form(...),
-    name: Optional[str] = Form(None),
-):
-    _, registry_url, _ = _urls()
-    async with httpx.AsyncClient(timeout=30.0) as c:
-        await c.post(
-            f"{registry_url}/v1/datasets/register",
-            json={"gcs_path": gcs_path, "name": name or None, "format": "jsonl"},
-        )
-    return RedirectResponse("/", status_code=303)
-
-
-@app.post("/create-job")
-async def create_job(
-    model_name: str = Form(...),
-    framework: str = Form("transformers"),
-    technique: str = Form("lora"),
-    dataset_id: str = Form(...),
-    dataset_version: str = Form("1"),
-    max_steps: int = Form(10),
-    learning_rate: float = Form(2e-4),
-    lora_r: int = Form(8),
-):
-    control_url, _, _ = _urls()
-    payload = {
-        "model_name": model_name,
-        "framework": framework,
-        "technique": technique,
-        "dataset": {"dataset_id": dataset_id, "version": dataset_version},
-        "parameters": {
-            "max_steps": max_steps,
-            "learning_rate": learning_rate,
-            "lora_r": lora_r,
-            "lora_alpha": lora_r * 2,
-        },
-    }
-    async with httpx.AsyncClient(timeout=60.0) as c:
-        await c.post(f"{control_url}/v1/jobs/finetune", json=payload)
-    return RedirectResponse("/", status_code=303)
-
-
-@app.post("/deploy")
-async def deploy(
-    model_name: str = Form(...),
-    inference_framework: str = Form("vllm"),
-):
-    _, _, deploy_url = _urls()
-    async with httpx.AsyncClient(timeout=30.0) as c:
-        await c.post(
-            f"{deploy_url}/v1/endpoints",
-            json={
-                "model_name": model_name,
-                "inference_framework": inference_framework,
-                "use_adapters": True,
-            },
-        )
-    return RedirectResponse("/", status_code=303)
-
-
-@app.post("/prompt")
-async def prompt(endpoint_id: str = Form(...), prompt: str = Form(...)):
-    _, _, deploy_url = _urls()
-    async with httpx.AsyncClient(timeout=30.0) as c:
-        r = await c.post(
-            f"{deploy_url}/v1/endpoints/{endpoint_id}/prompt",
-            json={"prompt": prompt},
-        )
-        r.raise_for_status()
-        completion = r.json().get("completion", "")
-    return HTMLResponse(
-        f"<html><body style='font-family:system-ui;padding:2rem'>"
-        f"<h2>Prompt result</h2><p><b>In:</b> {prompt}</p>"
-        f"<p><b>Out:</b> {completion}</p>"
-        f"<p><a href='/'>← Back</a></p></body></html>"
     )
 
 
