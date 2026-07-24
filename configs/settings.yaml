@@ -84,6 +84,6 @@ defaults:
     per_device_train_batch_size: 1
     lora_r: 8
     lora_alpha: 16
-    max_steps: 12
+    max_steps: 24
     max_seq_length: 64
     output_dir: ./data/outputs

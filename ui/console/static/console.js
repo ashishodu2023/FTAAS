@@ -544,7 +544,7 @@
             version: String(fd.get("dataset_version") || "1"),
           },
           parameters: {
-            max_steps: Number(fd.get("max_steps") || 12),
+            max_steps: Math.max(12, Number(fd.get("max_steps") || 24)),
             learning_rate: Number(fd.get("learning_rate") || 1e-3),
             lora_r: loraR,
             lora_alpha: loraR * 2,

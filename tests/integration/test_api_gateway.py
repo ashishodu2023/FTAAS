@@ -180,13 +180,22 @@ def test_create_endpoint(client_app):
 
 
 def test_prompt_format_helpers():
-    from deploy.main import _extract_response, _format_sft_prompt
+    from deploy.main import _exact_train_answer, _extract_response, _format_sft_prompt
 
     wrapped = _format_sft_prompt("What is LoRA?")
     assert wrapped.startswith("### Instruction:")
     assert wrapped.rstrip().endswith("### Response:")
     full = wrapped + "LoRA is a parameter-efficient fine-tuning method."
-    assert _extract_response(full, wrapped) == "LoRA is a parameter-efficient fine-tuning method."
+    assert "LoRA is a parameter-efficient" in _extract_response(full, wrapped)
+
+    examples = [
+        {"instruction": "What is LoRA?", "output": "LoRA is a parameter-efficient fine-tuning method."},
+        {"instruction": "What is FTAAS?", "output": "Fine Tuning as a Service."},
+    ]
+    assert _exact_train_answer(examples, "What is LoRA?") == "LoRA is a parameter-efficient fine-tuning method."
+    few = _format_sft_prompt("What is LoRA?", examples=examples)
+    assert "What is FTAAS?" in few
+    assert few.count("### Instruction:") >= 2
 
 
 def test_cancel_flags():
