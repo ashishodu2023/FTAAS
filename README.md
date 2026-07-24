@@ -23,6 +23,9 @@ ftaas.Client / notebook           Console
 | Dataset preview + register (jsonl/json/csv, local paths) | **Live** |
 | Job logs + progress in Console / `GET /v1/jobs/{id}/logs` | **Live** |
 | Real fine-tune (`transformers` + PEFT LoRA/DoRA; `trl` SFT/DPO) | **Live** |
+| **QLoRA (4-bit bitsandbytes)** on CUDA | **Live** — see [docs/gpu-training.md](docs/gpu-training.md) |
+| GPU Docker (`Dockerfile.gpu`) / RunPod / GCE | **Live** |
+| Remote trainer worker (control/UI offload) | **Live** — `FTAAS_TRAIN_MODE=remote` |
 | Framework aliases (`verl`, `llama-factory`, `unsloth`, `axolotl`) | Compat → PEFT/TRL backend |
 | Prompt via local Transformers/PEFT | **Live** |
 | vLLM / Ray Serve serving | **Planned** (UI options disabled) |
@@ -38,7 +41,8 @@ ftaas.Client / notebook           Console
 | **control** | Fine-tune jobs, logs/progress, model registry |
 | **workflow** | Pipeline create / complete |
 | **deploy** | Endpoints + prompt API (HF/PEFT generate) |
-| **runner** | Local train pipeline (Airflow optional) |
+| **runner** | Local train pipeline (Airflow optional); can offload to GPU worker |
+| **trainer_worker** | Optional GPU process — QLoRA/LoRA, uploads artifacts to control |
 | **ftaas** SDK | `Client` for notebooks / automation |
 
 ## Quick start
@@ -50,6 +54,19 @@ pip install -r requirements.txt
 ./scripts/e2e_smoke.sh
 ./scripts/stop_all.sh
 ```
+
+### GPU / QLoRA / remote trainer
+
+```bash
+# All-in-one GPU box
+docker build -f Dockerfile.gpu -t ftaas-gpu .
+docker run --gpus all -p 8080:8080 -e FTAAS_TRAIN_DEVICE=cuda ftaas-gpu
+
+# Or: control on CPU, train on GPU worker — see docs/gpu-training.md
+./scripts/start_trainer_worker.sh   # :8090
+```
+
+Full guide: [docs/gpu-training.md](docs/gpu-training.md).
 
 ## SDK
 
@@ -84,10 +101,14 @@ FTAAS/
 │   ├── registry/
 │   ├── control/
 │   ├── workflow/
-│   └── deploy/
+│   ├── deploy/
+│   └── trainer_worker/         # optional GPU offload
 ├── runner/                     # local + Airflow DAG
 ├── training/
 ├── ui/console/
+├── Dockerfile                  # CPU (Railway)
+├── Dockerfile.gpu              # CUDA + bitsandbytes
+├── docs/gpu-training.md
 ├── tests/                      # unit + system integration
 ├── examples/
 └── scripts/

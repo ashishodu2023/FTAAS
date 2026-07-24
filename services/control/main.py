@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
+from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy import JSON, DateTime, Integer, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -121,18 +122,42 @@ async def startup() -> None:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "control"}
+    from training.device import device_report
+
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "service": "control",
+        "train_mode": settings.train_mode,
+        "trainer_url": settings.trainer_url or None,
+        "device": device_report(),
+    }
 
 
 @app.get("/v1/catalog")
 async def catalog() -> dict[str, Any]:
+    from training.device import device_report
+
     cfg = get_platform_config()
+    settings = get_settings()
+    device = device_report()
     return {
         "frameworks": cfg.frameworks,
         "techniques": cfg.techniques,
         "defaults": cfg.defaults,
+        "training": {
+            "mode": settings.train_mode,
+            "device": device,
+            "trainer_url": settings.trainer_url or None,
+            "public_url": settings.public_url,
+            "qlora": {
+                "requires": "CUDA + bitsandbytes (see Dockerfile.gpu / docs/gpu-training.md)",
+                "cpu_fallback": settings.allow_qlora_cpu_fallback,
+                "available": bool(device.get("cuda_available") and device.get("bitsandbytes")),
+            },
+        },
         "backends": {
-            "transformers": "live — PEFT/transformers Trainer",
+            "transformers": "live — PEFT/transformers Trainer; QLoRA when CUDA+bnb",
             "trl": "live — TRL SFT/DPO when installed; else PEFT",
             "verl": "compat — PEFT/TRL backend",
             "llama-factory": "compat — PEFT backend",
@@ -359,6 +384,58 @@ async def get_job_logs(job_id: str) -> dict[str, Any]:
         "error": row.error,
         "metrics": row.metrics or {},
     }
+
+
+@app.post("/v1/jobs/{job_id}/artifacts")
+async def upload_job_artifacts(job_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    """Remote GPU trainer uploads a zip of adapter weights → data/outputs/{job_id}/."""
+    assert SessionLocal is not None
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(select(JobRow).where(JobRow.job_id == job_id))
+        ).scalars().first()
+    if not row:
+        raise HTTPException(404, "Job not found")
+
+    import io
+    import zipfile
+
+    root = ensure_data_dirs()
+    dest = root / "outputs" / job_id
+    if dest.exists():
+        import shutil
+
+        shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    raw = await file.read()
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            zf.extractall(dest)
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, "Expected a zip archive of model artifacts") from exc
+
+    model_uri = str(dest.resolve())
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(select(JobRow).where(JobRow.job_id == job_id))
+        ).scalars().first()
+        if row:
+            logs = list(row.logs or [])
+            logs.append(
+                {
+                    "ts": utcnow().isoformat(),
+                    "message": f"Remote trainer uploaded artifacts → {model_uri}",
+                }
+            )
+            row.logs = logs
+            progress = dict(row.progress or {})
+            progress["message"] = "Artifacts received from remote trainer"
+            progress["percent"] = max(float(progress.get("percent") or 0), 70.0)
+            row.progress = progress
+            row.updated_at = utcnow()
+            await session.commit()
+    return {"job_id": job_id, "model_uri": model_uri, "files": len(list(dest.rglob('*')))}
 
 
 @app.post("/v1/models/register", response_model=ModelInfo)

@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     workflow_url: str = "http://127.0.0.1:8080"
     deploy_url: str = "http://127.0.0.1:8080"
     data_dir: str = str(ROOT / "data")
+    # Training plane
+    # device: auto | cuda | cpu
+    train_device: str = "auto"
+    # mode: local (in-process) | remote (GPU worker via FTAAS_TRAINER_URL)
+    train_mode: str = "local"
+    trainer_url: str = ""
+    # Public base URL remote trainers use to download datasets / upload artifacts
+    public_url: str = "http://127.0.0.1:8080"
+    allow_qlora_cpu_fallback: bool = False
 
     class Config:
         env_prefix = "FTAAS_"

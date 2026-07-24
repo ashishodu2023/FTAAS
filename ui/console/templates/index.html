@@ -71,7 +71,7 @@
         <label>Model
           <input name="model_name" value="{{ defaults.get('model_name', 'distilgpt2') }}" required />
         </label>
-        <p class="hint muted">Default <code>distilgpt2</code> is tuned for CPU demos (~minutes). Avoid <code>sshleifer/tiny-gpt2</code> (gibberish) and large models on Railway CPU.</p>
+        <p class="hint muted">Default <code>distilgpt2</code> is tuned for CPU demos (~minutes). Avoid <code>sshleifer/tiny-gpt2</code> (gibberish). For ~7B use technique <code>qlora</code> on a CUDA host (<code>Dockerfile.gpu</code>) or set <code>FTAAS_TRAIN_MODE=remote</code> — see docs/gpu-training.md.</p>
         <label>Framework
           <select name="framework" id="sel-framework">
             {% for f in catalog.get('frameworks', ['transformers','trl','verl','llama-factory','unsloth','axolotl']) %}
@@ -82,6 +82,7 @@
         <label>Technique
           <select name="technique" id="sel-technique"></select>
         </label>
+        <p class="hint muted" id="train-plane-hint"></p>
         <label>Dataset
           <select name="dataset_id" id="sel-dataset" required>
             {% for d in datasets %}

@@ -328,6 +328,22 @@ async def download_dataset(dataset_id: str, version: str = Query("1")) -> Downlo
     )
 
 
+@app.get("/v1/datasets/{dataset_id}/file")
+async def download_dataset_file(dataset_id: str, version: str = Query("1")):
+    """Raw dataset bytes for remote GPU trainers (no shared filesystem)."""
+    from fastapi.responses import FileResponse
+
+    info = await get_dataset(dataset_id, version=version)
+    if not info.local_path or not Path(info.local_path).exists():
+        raise HTTPException(404, "Dataset file missing on disk")
+    path = Path(info.local_path)
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=path.name,
+    )
+
+
 def main() -> None:
     import uvicorn
 

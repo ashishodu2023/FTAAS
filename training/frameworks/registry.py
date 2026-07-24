@@ -211,6 +211,80 @@ def _alignment_technique(technique: Technique) -> bool:
     }
 
 
+def _want_qlora(technique: Technique) -> bool:
+    return technique == Technique.QLORA
+
+
+def _load_causal_lm_for_train(torch, AutoModelForCausalLM, model_name: str, technique: Technique):
+    """
+    Load base LM. QLoRA uses bitsandbytes 4-bit on CUDA; otherwise FP weights.
+    Returns (model, meta) where meta includes device / qlora flags.
+    """
+    from ftaas.config import get_settings
+    from training.device import resolve_train_device
+
+    settings = get_settings()
+    device = resolve_train_device()
+    on_cpu = device == "cpu"
+    use_qlora = _want_qlora(technique)
+    meta: dict[str, Any] = {
+        "device": device,
+        "qlora": False,
+        "qlora_fallback_lora": False,
+        "bitsandbytes": False,
+    }
+
+    if use_qlora and on_cpu:
+        if settings.allow_qlora_cpu_fallback:
+            meta["qlora_fallback_lora"] = True
+            _report_job_progress(
+                message="QLoRA requested on CPU — falling back to LoRA (set FTAAS_TRAIN_DEVICE=cuda for real 4-bit)",
+                step=0,
+            )
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+            return model, meta
+        raise RuntimeError(
+            "QLoRA (4-bit) requires CUDA + bitsandbytes. "
+            "Run on a GPU host (Dockerfile.gpu / RunPod / GCE), set FTAAS_TRAIN_DEVICE=cuda, "
+            "or set FTAAS_TRAIN_MODE=remote with FTAAS_TRAINER_URL pointing at a GPU worker. "
+            "For CPU demos use technique=lora. "
+            "Override with FTAAS_ALLOW_QLORA_CPU_FALLBACK=true to silently use LoRA."
+        )
+
+    if use_qlora:
+        try:
+            import bitsandbytes  # noqa: F401
+            from peft import prepare_model_for_kbit_training
+            from transformers import BitsAndBytesConfig
+        except ImportError as exc:
+            raise RuntimeError(
+                "QLoRA requires bitsandbytes. Install GPU deps: pip install -r requirements-gpu.txt "
+                "(or use Dockerfile.gpu)."
+            ) from exc
+
+        compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        bnb = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_use_double_quant=True,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=bnb,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        model = prepare_model_for_kbit_training(model)
+        meta["qlora"] = True
+        meta["bitsandbytes"] = True
+        meta["bnb_4bit"] = True
+        return model, meta
+
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    return model, meta
+
+
 def _real_causal_lm_train(
     *,
     framework: str,
@@ -237,16 +311,19 @@ def _real_causal_lm_train(
     ) = _require_torch_stack()
     _ = TrainerCallback
 
+    from training.device import lora_target_modules, resolve_train_device
+
     started = time.perf_counter()
     rows = _load_rows(dataset_path)
     texts = [_row_to_text(r) for r in rows]
-    # CPU demos: short seq + dynamic padding (fixed max_length pad was much slower)
-    on_cpu = not torch.cuda.is_available()
-    seq_cap = 64 if on_cpu else 128
-    seq_len = min(int(params.max_seq_length or 512), seq_cap)
+    device = resolve_train_device()
+    on_cpu = device == "cpu"
+    # CPU demos: short seq (fixed long padding was much slower)
+    requested_seq = int(params.max_seq_length or 512)
+    seq_len = min(requested_seq, 64) if on_cpu else requested_seq
     train_bs = 1 if on_cpu else max(1, int(params.per_device_train_batch_size))
 
-    tok = AutoTokenizer.from_pretrained(model_name)
+    tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
@@ -254,10 +331,16 @@ def _real_causal_lm_train(
         return tok(batch["text"], truncation=True, max_length=seq_len)
 
     ds = Dataset.from_dict({"text": texts}).map(tokenize, batched=True, remove_columns=["text"])
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    _report_job_progress(
+        message=f"Loading model {model_name} (device={device}, technique={technique.value})",
+        step=0,
+        max_steps=params.max_steps,
+    )
+    model, load_meta = _load_causal_lm_for_train(torch, AutoModelForCausalLM, model_name, technique)
+    use_qlora = bool(load_meta.get("qlora"))
 
-    if use_peft:
-        target_modules = ["c_attn"] if "gpt2" in model_name.lower() else ["q_proj", "v_proj"]
+    if use_peft or use_qlora or _want_qlora(technique):
+        target_modules = lora_target_modules(model_name)
         # BitFit: train bias only via peft LoRA with r and freeze non-bias — approximate with LoRA
         lora = LoraConfig(
             r=max(1, params.lora_r),
@@ -269,6 +352,7 @@ def _real_causal_lm_train(
             target_modules=target_modules,
         )
         model = get_peft_model(model, lora)
+        use_peft = True
     elif technique == Technique.FROZEN:
         for name, p in model.named_parameters():
             p.requires_grad = "ln" in name or "norm" in name or "lm_head" in name
@@ -281,27 +365,29 @@ def _real_causal_lm_train(
     out = Path(params.output_dir) / job_id
     out.mkdir(parents=True, exist_ok=True)
     loss_cb = _make_loss_callback(params.max_steps)
-    _report_job_progress(
-        message=f"Loading model {model_name}",
-        step=0,
-        max_steps=params.max_steps,
-    )
-    args = TrainingArguments(
-        output_dir=str(out),
-        max_steps=params.max_steps,
-        per_device_train_batch_size=train_bs,
-        learning_rate=params.learning_rate,
-        logging_steps=max(1, params.logging_steps),
-        save_strategy="no",
-        report_to=[],
-        remove_unused_columns=False,
-        seed=params.seed,
-        dataloader_pin_memory=False,
-        dataloader_num_workers=0,
-        disable_tqdm=True,
-        skip_memory_metrics=True,
-        use_cpu=on_cpu,
-    )
+    # QLoRA with device_map="auto": do not force use_cpu; let accelerate place modules
+    train_kwargs: dict[str, Any] = {
+        "output_dir": str(out),
+        "max_steps": params.max_steps,
+        "per_device_train_batch_size": train_bs,
+        "learning_rate": params.learning_rate,
+        "logging_steps": max(1, params.logging_steps),
+        "save_strategy": "no",
+        "report_to": [],
+        "remove_unused_columns": False,
+        "seed": params.seed,
+        "dataloader_pin_memory": not on_cpu,
+        "dataloader_num_workers": 0,
+        "disable_tqdm": True,
+        "skip_memory_metrics": True,
+    }
+    if use_qlora:
+        train_kwargs["bf16"] = bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
+        train_kwargs["fp16"] = bool(torch.cuda.is_available() and not train_kwargs["bf16"])
+        train_kwargs["gradient_checkpointing"] = True
+    else:
+        train_kwargs["use_cpu"] = on_cpu
+    args = TrainingArguments(**train_kwargs)
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
     trainer = Trainer(
         model=model,
@@ -329,7 +415,6 @@ def _real_causal_lm_train(
     metrics["total_params"] = float(total)
     metrics["trainable_pct"] = round(100.0 * trainable / max(total, 1), 4)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     statistics = {
         "mode": "real",
         "framework": framework,
@@ -348,6 +433,9 @@ def _real_causal_lm_train(
         "step_losses": loss_cb.step_losses,
         "duration_seconds": round(duration, 4),
         "device": device,
+        "qlora": use_qlora,
+        "qlora_fallback_lora": bool(load_meta.get("qlora_fallback_lora")),
+        "bitsandbytes": bool(load_meta.get("bitsandbytes")),
         "trainable_params": trainable,
         "total_params": total,
         "trainable_pct": metrics["trainable_pct"],
@@ -366,6 +454,7 @@ def _real_causal_lm_train(
             "learning_rate": params.learning_rate,
             "max_steps": params.max_steps,
             "device": device,
+            "qlora": use_qlora,
             "trainable_params": trainable,
             "total_params": total,
         },
@@ -402,18 +491,27 @@ def _real_trl_sft(
             use_peft=True,
         )
 
+    from training.device import lora_target_modules, resolve_train_device
+
     started = time.perf_counter()
     rows = _load_rows(dataset_path)
     texts = [_row_to_text(r) for r in rows]
-    on_cpu = not torch.cuda.is_available()
-    seq_len = min(int(params.max_seq_length or 512), 64 if on_cpu else 128)
+    device = resolve_train_device()
+    on_cpu = device == "cpu"
+    seq_len = min(int(params.max_seq_length or 512), 64 if on_cpu else int(params.max_seq_length or 512))
     train_bs = 1 if on_cpu else max(1, int(params.per_device_train_batch_size))
-    tok = AutoTokenizer.from_pretrained(model_name)
+    tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     ds = Dataset.from_dict({"text": texts})
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    target_modules = ["c_attn"] if "gpt2" in model_name.lower() else ["q_proj", "v_proj"]
+    _report_job_progress(
+        message=f"TRL SFT loading {model_name} (device={device})",
+        step=0,
+        max_steps=params.max_steps,
+    )
+    model, load_meta = _load_causal_lm_for_train(torch, AutoModelForCausalLM, model_name, technique)
+    use_qlora = bool(load_meta.get("qlora"))
+    target_modules = lora_target_modules(model_name)
     peft_cfg = LoraConfig(
         r=params.lora_r,
         lora_alpha=params.lora_alpha,
@@ -425,26 +523,27 @@ def _real_trl_sft(
     out = Path(params.output_dir) / job_id
     out.mkdir(parents=True, exist_ok=True)
     loss_cb = _make_loss_callback(params.max_steps)
-    _report_job_progress(
-        message=f"TRL SFT loading {model_name}",
-        step=0,
-        max_steps=params.max_steps,
-    )
-    args = SFTConfig(
-        output_dir=str(out),
-        max_steps=params.max_steps,
-        per_device_train_batch_size=train_bs,
-        learning_rate=params.learning_rate,
-        logging_steps=max(1, params.logging_steps),
-        save_strategy="no",
-        report_to=[],
-        seed=params.seed,
-        max_length=seq_len,
-        dataset_text_field="text",
-        dataloader_num_workers=0,
-        disable_tqdm=True,
-        use_cpu=on_cpu,
-    )
+    sft_kwargs: dict[str, Any] = {
+        "output_dir": str(out),
+        "max_steps": params.max_steps,
+        "per_device_train_batch_size": train_bs,
+        "learning_rate": params.learning_rate,
+        "logging_steps": max(1, params.logging_steps),
+        "save_strategy": "no",
+        "report_to": [],
+        "seed": params.seed,
+        "max_length": seq_len,
+        "dataset_text_field": "text",
+        "dataloader_num_workers": 0,
+        "disable_tqdm": True,
+    }
+    if use_qlora:
+        sft_kwargs["bf16"] = bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
+        sft_kwargs["fp16"] = bool(torch.cuda.is_available() and not sft_kwargs["bf16"])
+        sft_kwargs["gradient_checkpointing"] = True
+    else:
+        sft_kwargs["use_cpu"] = on_cpu
+    args = SFTConfig(**sft_kwargs)
     trainer = SFTTrainer(
         model=model,
         args=args,
@@ -471,7 +570,6 @@ def _real_trl_sft(
     metrics["trainable_pct"] = round(100.0 * trainable / max(total, 1), 4)
     if "train_loss" not in metrics and loss_cb.loss_curve:
         metrics["train_loss"] = float(loss_cb.loss_curve[-1])
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     statistics = {
         "mode": "real",
         "framework": framework,
@@ -484,6 +582,9 @@ def _real_trl_sft(
         "step_losses": loss_cb.step_losses,
         "duration_seconds": round(duration, 4),
         "device": device,
+        "qlora": use_qlora,
+        "qlora_fallback_lora": bool(load_meta.get("qlora_fallback_lora")),
+        "bitsandbytes": bool(load_meta.get("bitsandbytes")),
         "trainable_params": trainable,
         "total_params": total,
         "trainable_pct": metrics["trainable_pct"],

@@ -77,6 +77,7 @@ defaults:
   framework: transformers
   technique: lora
   # distilgpt2 ≈2× faster than gpt2 on CPU; still learns short alpaca demos
+  # On GPU + QLoRA, use e.g. TinyLlama/TinyLlama-1.1B-Chat-v1.0 or a 7B Instruct
   model_name: distilgpt2
   hyperparameters:
     learning_rate: 1.0e-3
@@ -87,3 +88,10 @@ defaults:
     max_steps: 24
     max_seq_length: 64
     output_dir: ./data/outputs
+
+# Training plane (overridden by env):
+#   FTAAS_TRAIN_DEVICE=auto|cuda|cpu
+#   FTAAS_TRAIN_MODE=local|remote
+#   FTAAS_TRAINER_URL=http://gpu-worker:8090
+#   FTAAS_PUBLIC_URL=https://ftaas.org
+# See docs/gpu-training.md

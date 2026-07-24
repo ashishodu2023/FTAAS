@@ -46,10 +46,15 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
+        from training.device import device_report
+
+        settings = get_settings()
         return {
             "status": "ok",
             "service": "ftaas",
             "components": ["registry", "control", "workflow", "deploy", "console"],
+            "train_mode": settings.train_mode,
+            "device": device_report(),
         }
 
     skip = {"/docs", "/redoc", "/openapi.json", "/health"}

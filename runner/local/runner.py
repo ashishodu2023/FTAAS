@@ -161,17 +161,40 @@ def run_finetune_pipeline(job_id: str, pipeline_id: str) -> None:
                 },
             )
 
-            handle = submit_training_job(
-                cluster_name=cluster.cluster_name,
-                model_name=job["model_name"],
-                dataset_path=dataset_path,
-                framework=Framework(job["framework"]),
-                technique=Technique(job["technique"]),
-                params=params,
-                job_id_ref=job_id,
-            )
-            log(f"Training job submitted ({handle.job_id})", percent=35, phase="training")
-            result = poll_job_status(handle.job_id)
+            from training.remote.client import remote_trainer_enabled, submit_remote_training
+
+            if remote_trainer_enabled():
+                log(
+                    f"Offloading training to remote GPU worker ({settings.trainer_url})",
+                    percent=32,
+                    phase="training",
+                )
+                public = (settings.public_url or control_url).rstrip("/")
+                ds_id = ds["dataset_id"]
+                ds_ver = ds.get("version") or "1"
+                result = submit_remote_training(
+                    job_id=job_id,
+                    model_name=job["model_name"],
+                    dataset_path=dataset_path,
+                    framework=Framework(job["framework"]),
+                    technique=Technique(job["technique"]),
+                    params=params,
+                    dataset_download_url=f"{public}/v1/datasets/{ds_id}/download?version={ds_ver}",
+                )
+                handle_job_id = f"remote_{job_id}"
+            else:
+                handle = submit_training_job(
+                    cluster_name=cluster.cluster_name,
+                    model_name=job["model_name"],
+                    dataset_path=dataset_path,
+                    framework=Framework(job["framework"]),
+                    technique=Technique(job["technique"]),
+                    params=params,
+                    job_id_ref=job_id,
+                )
+                handle_job_id = handle.job_id
+                log(f"Training job submitted ({handle_job_id})", percent=35, phase="training")
+                result = poll_job_status(handle.job_id)
             ensure_not_cancelled("training")
             log(
                 f"Training finished backend={(result.statistics or {}).get('backend')}",

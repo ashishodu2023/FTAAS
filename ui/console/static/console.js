@@ -117,6 +117,15 @@
             .join("")}</optgroup>`
       )
       .join("");
+    const train = catalog?.training;
+    const hint = document.getElementById("train-plane-hint");
+    if (hint && train) {
+      const q = train.qlora || {};
+      const mode = train.mode || "local";
+      const cuda = train.device?.cuda_available ? "CUDA" : "CPU";
+      const qlora = q.available ? "QLoRA ready" : "QLoRA needs GPU+bnb";
+      hint.textContent = `Training plane: ${mode} · ${cuda} · ${qlora}`;
+    }
   }
 
   function renderDatasets(datasets) {

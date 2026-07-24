@@ -1,0 +1,8 @@
+# GPU training extras for FTAAS (install on CUDA hosts / Dockerfile.gpu)
+# Base app deps still come from requirements.txt
+
+# CUDA PyTorch — pick the index matching your driver (cu121 default)
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.4.0
+bitsandbytes>=0.43.0
+scipy>=1.11.0
