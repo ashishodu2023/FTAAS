@@ -1,0 +1,10 @@
+# Railway service for the Node product site (build from repo root).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "web/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

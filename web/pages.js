@@ -283,6 +283,15 @@ export function workbenchPage(boot) {
       <p class="lede">Preview → register → train → deploy → prompt. Requests go through this site to the Python gateway. Creating a job starts a real training run.</p>
     </section>
     <div id="flash" class="banner" hidden></div>
+    <section class="panel auth-panel" id="step-auth">
+      <div class="panel-head">
+        <h2>API token</h2>
+        <p class="hint">Required on public deploys. Stored only in this browser session.</p>
+      </div>
+      <label class="auth-label">Bearer token
+        <input id="inp-api-token" type="password" autocomplete="off" placeholder="FTAAS_API_TOKEN" />
+      </label>
+    </section>
 
     <div class="workbench">
       <aside class="workbench-nav" aria-label="Workbench steps">
@@ -403,7 +412,7 @@ export function workbenchPage(boot) {
       </div>
     </div>
     <script id="boot" type="application/json">${bootJson}</script>
-    <script src="/static/workbench.js?v=build29" defer></script>
+    <script src="/static/workbench.js?v=build30" defer></script>
     `,
     "page-workbench",
   );

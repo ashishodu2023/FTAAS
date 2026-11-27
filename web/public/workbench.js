@@ -7,6 +7,14 @@
   const catalog = boot.catalog || {};
 
   const flashEl = document.getElementById("flash");
+  const tokenInp = document.getElementById("inp-api-token");
+  const TOKEN_KEY = "ftaas_api_token";
+  if (tokenInp) {
+    tokenInp.value = sessionStorage.getItem(TOKEN_KEY) || "";
+    tokenInp.addEventListener("change", () => {
+      sessionStorage.setItem(TOKEN_KEY, tokenInp.value.trim());
+    });
+  }
   const frameworkSel = document.getElementById("sel-framework");
   const frameworkNote = document.getElementById("framework-note");
   const techSel = document.getElementById("sel-technique");
@@ -74,13 +82,20 @@
     flashEl.classList.toggle("err", Boolean(isErr));
   }
 
+  function apiHeaders(extra = {}) {
+    const headers = { Accept: "application/json", ...extra };
+    const token = (tokenInp?.value || sessionStorage.getItem(TOKEN_KEY) || "").trim();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
   async function api(path, opts = {}) {
     const res = await fetch(`/gateway${path}`, {
-      headers: {
-        Accept: "application/json",
-        ...(opts.body ? { "Content-Type": "application/json" } : {}),
-      },
       ...opts,
+      headers: apiHeaders({
+        ...(opts.body ? { "Content-Type": "application/json" } : {}),
+        ...(opts.headers || {}),
+      }),
     });
     const text = await res.text();
     let data = null;
