@@ -105,6 +105,8 @@ function isUnsafeDatasetPath(value) {
   if (typeof value !== "string" || !value.trim()) return true;
   const p = value.trim();
   if (p.includes("\0")) return true;
+  // Allow relative paths and gs:// labels; block file/http and absolute FS paths.
+  if (/^(file|https?|ftp):/i.test(p)) return true;
   if (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\") || p.startsWith("/")) return true;
   if (p.includes("..")) return true;
   return false;
@@ -152,11 +154,12 @@ function proxy(req, res) {
     if (WRITE_METHODS.has(method) && bodyBuf.length) {
       try {
         const payload = JSON.parse(bodyBuf.toString("utf8"));
-        const pathValue = payload?.path ?? payload?.dataset_path ?? payload?.uri;
+        const pathValue =
+          payload?.gcs_path ?? payload?.path ?? payload?.dataset_path ?? payload?.uri;
         if (pathValue != null && isUnsafeDatasetPath(String(pathValue))) {
           sendJson(res, 400, {
             detail:
-              "Dataset path must be a relative path under the gateway data root (no absolute or .. paths).",
+              "Dataset path must be a relative path under the gateway data root (no absolute, file://, or .. paths).",
           });
           return;
         }
