@@ -13,7 +13,7 @@
         pill.classList.toggle("down", !up);
       }
       if (consoleLink && data.console_url) {
-        consoleLink.innerHTML = "";
+        while (consoleLink.firstChild) consoleLink.removeChild(consoleLink.firstChild);
         const a = document.createElement("a");
         a.href = data.console_url;
         a.textContent = "Operator console";
