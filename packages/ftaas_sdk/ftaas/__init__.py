@@ -1,4 +1,4 @@
-"""FTAAS Python SDK for Fine Tuning as a Service."""
+"""FTAAS Python SDK for the ftaas.org fine-tuning gateway."""
 
 from .client import Client
 from .models import (
@@ -28,4 +28,4 @@ __all__ = [
     "Technique",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

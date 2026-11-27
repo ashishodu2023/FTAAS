@@ -1,5 +1,7 @@
 # Fine Tuning as a Service (FTAAS)
 
+The gateway behind [ftaas.org](https://ftaas.org). One operator can run it today. A small applied-ML group can share that same gateway next: register an instruction file, run a real LoRA or QLoRA job, read logs, and prompt the adapter. The PyPI package `ftaas` is the SDK for that gateway.
+
 **preview → register → orchestrate → train (transformers / TRL · LoRA) → MLflow → prompt (local HF/PEFT) → Console / API**
 
 ```
@@ -68,6 +70,17 @@ docker run --gpus all -p 8080:8080 -e FTAAS_TRAIN_DEVICE=cuda ftaas-gpu
 
 Full guide: [docs/gpu-training.md](docs/gpu-training.md).
 
+### Product site
+
+Two parts. The Python gateway (`http://127.0.0.1:8080`, and the Railway service behind [ftaas.org](https://ftaas.org)) trains and serves `/v1`. The Node site on port 3000 is the public front door and proxies those same routes (preview, register, jobs, deploy, prompt):
+
+```bash
+cd web && npm start
+# FTAAS_GATEWAY_URL=http://127.0.0.1:8080  FTAAS_WEB_PORT=3000
+```
+
+Open http://127.0.0.1:3000. Pages: `/`, `/pipeline`, `/catalog`, `/workbench`, `/scope`. The site does not train; creating a job from the workbench starts a real run on the gateway.
+
 ## SDK
 
 ```python
@@ -105,7 +118,8 @@ FTAAS/
 │   └── trainer_worker/         # optional GPU offload
 ├── runner/                     # local + Airflow DAG
 ├── training/
-├── ui/console/
+├── ui/console/                 # operator console on the gateway
+├── web/                        # Node product site (proxies /v1)
 ├── Dockerfile                  # CPU (Railway)
 ├── Dockerfile.gpu              # CUDA + bitsandbytes
 ├── docs/gpu-training.md

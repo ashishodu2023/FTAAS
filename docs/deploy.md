@@ -61,3 +61,9 @@ Until DNS is set, `ftaas.org` will not resolve. Meanwhile use the Railway URL: `
 curl -sf https://ftaas.org/health
 open https://ftaas.org/
 ```
+
+## 5. Two parts on ftaas.org
+
+This file deploys the **Python gateway** (console + `/v1`) and attaches `ftaas.org` to that service. The Node product site in `web/` is the other part: the pages for the same domain. It does not train.
+
+Leave this Railway service where it is until a second host is running `web/`. Build that host from `web/Dockerfile` (it only serves pages). Point it at `ftaas.org` / `www.ftaas.org`, and set its `FTAAS_GATEWAY_URL` to this service (the `*.up.railway.app` URL, or `api.ftaas.org`). The GPU worker stays private (`FTAAS_TRAINER_URL`, port 8090). Do not put Node into the gateway `Dockerfile`; `railway.toml` builds that image for the API and console.
