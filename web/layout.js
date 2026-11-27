@@ -31,8 +31,8 @@ export function layout({ title, current, main, pageClass = "" }) {
   <meta http-equiv="Pragma" content="no-cache" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=build28" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=build29" />
 </head>
 <body class="${escapeHtml(pageClass)}">
   <a class="skip" href="#content">Skip to content</a>
@@ -63,7 +63,7 @@ export function layout({ title, current, main, pageClass = "" }) {
       </div>
     </div>
   </footer>
-  <script src="/static/site.js?v=build28" defer></script>
+  <script src="/static/site.js?v=build29" defer></script>
 </body>
 </html>`;
 }
