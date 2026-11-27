@@ -1,0 +1,14 @@
+{
+  "name": "ftaas-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FTAAS product site. Proxies the Python gateway at FTAAS_GATEWAY_URL. Does not train models.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:alt": "node run-port.js 3001"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -25,7 +25,11 @@ from .models import (
 
 
 class Client:
-    """Client for control + registry + deploy."""
+    """Client for one ftaas.org gateway: registry, control, and deploy.
+
+    The same process serves a single operator or a small group sharing
+    datasets, fine-tune jobs, and prompt endpoints.
+    """
 
     def __init__(
         self,
