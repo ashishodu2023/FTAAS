@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy the Node product site and point ftaas.org at it.
-# Prerequisites: railway login, existing Python gateway service already live.
+# Prerequisites: railway login; Python gateway already live; FTAAS_API_TOKEN set on both services in the dashboard.
 # Run one command per line — do not paste comments on the same line.
 
 set -euo pipefail
@@ -28,21 +28,21 @@ railway add --service ftaas-web 2>/dev/null || true
 railway service link ftaas-web
 
 echo "==> Configure product-site variables"
-# FTAAS_API_TOKEN must already exist as a Railway shared/variable secret — do not pass secrets on argv.
 railway variable set \
   FTAAS_GATEWAY_URL="$GATEWAY_URL" \
   FTAAS_REQUIRE_AUTH=1
 
-echo "==> Deploy Node site (Dockerfile web/Dockerfile from repo root)"
-railway up --detach --ci -m "Deploy ftaas.org product site"
-
-echo "==> Attach public domains to the product site"
-railway domain ftaas.org || true
-railway domain www.ftaas.org || true
-railway domain || true
+echo "==> Deploy Node site (web/ context + web/Dockerfile — not the gateway image)"
+railway up web --path-as-root --service ftaas-web --detach --ci -m "Deploy ftaas.org product site"
 
 echo
-echo "Done."
-echo "1. Set FTAAS_API_TOKEN on BOTH ftaas-web and the Python gateway in the Railway dashboard."
-echo "2. Move ftaas.org / www off the gateway service if they still point there; keep the gateway on *.up.railway.app or api.ftaas.org."
-echo "3. Verify: curl -sf https://ftaas.org/health"
+echo "==> Domains"
+echo "Before attaching ftaas.org / www.ftaas.org here, remove them from the Python gateway service"
+echo "in the Railway dashboard (Settings → Networking). Then run:"
+echo "  railway service link ftaas-web"
+echo "  railway domain ftaas.org"
+echo "  railway domain www.ftaas.org"
+echo
+echo "Set FTAAS_API_TOKEN on BOTH ftaas-web and the Python gateway (same value)."
+echo "Keep the gateway off public custom domains — use its *.up.railway.app URL or a private api host."
+echo "Verify: curl -sf https://ftaas.org/health   # expect service: ftaas-web"

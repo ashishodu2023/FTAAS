@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, Mount
 
 from ftaas.config import ensure_data_dirs, get_platform_config, get_settings
+
+# When set, every /v1 route requires Authorization: Bearer <token>.
+# Health/docs stay open. The public Node site proxies with the same token.
+_API_TOKEN = (os.environ.get("FTAAS_API_TOKEN") or "").strip()
 
 
 async def _run_startup(sub: FastAPI) -> None:
@@ -55,7 +61,26 @@ def create_app() -> FastAPI:
             "components": ["registry", "control", "workflow", "deploy", "console"],
             "train_mode": settings.train_mode,
             "device": device_report(),
+            "auth_required": bool(_API_TOKEN),
         }
+
+    if _API_TOKEN:
+
+        @app.middleware("http")
+        async def require_api_token(request: Request, call_next):
+            path = request.url.path or "/"
+            if path == "/health" or path.startswith("/docs") or path.startswith("/redoc") or path == "/openapi.json":
+                return await call_next(request)
+            # Protect API routes. HTML console stays reachable; set FTAAS_API_TOKEN and
+            # do not attach public custom domains to the gateway after the Node cutover.
+            if path.startswith("/v1"):
+                auth = request.headers.get("authorization") or ""
+                if auth != f"Bearer {_API_TOKEN}":
+                    return JSONResponse(
+                        {"detail": "Authorization required. Set Authorization: Bearer <FTAAS_API_TOKEN>."},
+                        status_code=401,
+                    )
+            return await call_next(request)
 
     skip = {"/docs", "/redoc", "/openapi.json", "/health"}
 

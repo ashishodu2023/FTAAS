@@ -9,11 +9,30 @@
   const flashEl = document.getElementById("flash");
   const tokenInp = document.getElementById("inp-api-token");
   const TOKEN_KEY = "ftaas_api_token";
+  let memoryToken = "";
+  function readStoredToken() {
+    try {
+      return sessionStorage.getItem(TOKEN_KEY) || "";
+    } catch {
+      return memoryToken;
+    }
+  }
+  function writeStoredToken(value) {
+    memoryToken = value;
+    try {
+      sessionStorage.setItem(TOKEN_KEY, value);
+    } catch {
+      // Browser blocked storage — keep the in-memory token only.
+    }
+  }
   if (tokenInp) {
-    tokenInp.value = sessionStorage.getItem(TOKEN_KEY) || "";
-    tokenInp.addEventListener("change", () => {
-      sessionStorage.setItem(TOKEN_KEY, tokenInp.value.trim());
-    });
+    tokenInp.value = readStoredToken();
+    const onTokenUpdate = () => {
+      writeStoredToken(tokenInp.value.trim());
+      refresh().catch((err) => flash(err.message, true));
+    };
+    tokenInp.addEventListener("change", onTokenUpdate);
+    tokenInp.addEventListener("blur", onTokenUpdate);
   }
   const frameworkSel = document.getElementById("sel-framework");
   const frameworkNote = document.getElementById("framework-note");
@@ -84,7 +103,7 @@
 
   function apiHeaders(extra = {}) {
     const headers = { Accept: "application/json", ...extra };
-    const token = (tokenInp?.value || sessionStorage.getItem(TOKEN_KEY) || "").trim();
+    const token = (tokenInp?.value || readStoredToken() || "").trim();
     if (token) headers.Authorization = `Bearer ${token}`;
     return headers;
   }
@@ -105,6 +124,9 @@
       data = { detail: text };
     }
     if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error("Authorization required — enter the API token above.");
+      }
       const detail = data?.detail;
       const msg = typeof detail === "string" ? detail : JSON.stringify(detail || data || res.statusText);
       throw new Error(msg);

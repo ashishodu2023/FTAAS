@@ -147,9 +147,31 @@ function proxy(req, res) {
   }
 
   const method = (req.method || "GET").toUpperCase();
+  const maxBody = Number(process.env.FTAAS_PROXY_MAX_BODY || 1_048_576); // 1 MiB
+  const declared = Number(req.headers["content-length"] || 0);
+  if (declared > maxBody) {
+    sendJson(res, 413, { detail: `Request body too large (max ${maxBody} bytes).` });
+    return;
+  }
+
   const chunks = [];
-  req.on("data", (chunk) => chunks.push(chunk));
+  let size = 0;
+  let tooLarge = false;
+  req.on("data", (chunk) => {
+    if (tooLarge) return;
+    size += chunk.length;
+    if (size > maxBody) {
+      tooLarge = true;
+      chunks.length = 0;
+      return;
+    }
+    chunks.push(chunk);
+  });
   req.on("end", () => {
+    if (tooLarge) {
+      sendJson(res, 413, { detail: `Request body too large (max ${maxBody} bytes).` });
+      return;
+    }
     const bodyBuf = Buffer.concat(chunks);
     if (WRITE_METHODS.has(method) && bodyBuf.length) {
       try {

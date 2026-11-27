@@ -1,7 +1,7 @@
-# Railway service for the Node product site (build from repo root).
+# Used when deploying with: railway up web --path-as-root --service ftaas-web
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "web/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
