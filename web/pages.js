@@ -23,18 +23,20 @@ export function homePage() {
     "/",
     "Fine Tuning as a Service",
     `
-    <section class="hero-stage">
-      <div class="hero-copy">
-        <p class="brand-lockup">FTAAS</p>
-        <h1>Fine-tune open models on one clear loop</h1>
-        <p class="lede">Preview a dataset, run real LoRA or QLoRA, then prompt the adapter — for a solo operator today, or a small team sharing the same gateway.</p>
-        <div class="actions">
-          <a class="btn" href="/workbench">Open workbench</a>
-          <a class="btn secondary" href="/pipeline">See how it works</a>
+    <section class="hero-band">
+      <div class="hero-stage">
+        <div class="hero-copy">
+          <p class="brand-lockup">FTAAS</p>
+          <h1>Train, track, and prompt on one shared gateway</h1>
+          <p class="lede">Preview a dataset, run real LoRA or QLoRA, then prompt the adapter — built for a solo operator today, or a small applied-ML team on the same box.</p>
+          <div class="actions">
+            <a class="btn" href="/workbench">Open workbench</a>
+            <a class="btn secondary" href="/pipeline">See how it works</a>
+          </div>
         </div>
-      </div>
-      <div class="hero-media" aria-hidden="false">
-        ${HERO_VISUAL}
+        <div class="hero-media" aria-hidden="false">
+          ${HERO_VISUAL}
+        </div>
       </div>
     </section>
 
@@ -401,7 +403,7 @@ export function workbenchPage(boot) {
       </div>
     </div>
     <script id="boot" type="application/json">${bootJson}</script>
-    <script src="/static/workbench.js?v=slate-20261126" defer></script>
+    <script src="/static/workbench.js?v=build27" defer></script>
     `,
     "page-workbench",
   );

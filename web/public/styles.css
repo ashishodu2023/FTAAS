@@ -1,20 +1,22 @@
 :root {
-  --bg: #f4f7fb;
-  --bg-deep: #e8eef6;
+  --bg: #eef3f8;
+  --bg-deep: #d9e3ef;
   --panel: #ffffff;
-  --ink: #0f1b2d;
-  --muted: #4a5b70;
+  --ink: #0b1628;
+  --muted: #3d5168;
   --accent: #e23d32;
   --accent-deep: #c9332a;
   --accent2: #1f6feb;
   --ok: #15803d;
   --warn: #a16207;
   --fail: #b91c1c;
-  --line: #d7e0ec;
-  --line-soft: #e8eef6;
-  --chip: #eef3f9;
-  --input: #f8fafc;
-  --header: rgba(255, 255, 255, 0.9);
+  --line: #c9d6e6;
+  --line-soft: #dce5f0;
+  --chip: #e8eef6;
+  --input: #f7f9fc;
+  --header: rgba(255, 255, 255, 0.92);
+  --hero: #10233f;
+  --hero-ink: #f4f7fb;
   --font: "Nunito", "Avenir Next", "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --radius: 14px;
@@ -31,10 +33,7 @@ body {
   min-height: 100vh;
   font-family: var(--font);
   color: var(--ink);
-  background:
-    radial-gradient(1000px 480px at 0% -8%, rgba(31, 111, 235, 0.08) 0%, transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, rgba(15, 27, 45, 0.05) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, var(--bg) 42%, #eef2f7 100%);
+  background: linear-gradient(180deg, #ffffff 0%, var(--bg) 55%, var(--bg-deep) 100%);
   background-attachment: fixed;
 }
 
@@ -127,6 +126,18 @@ code {
   align-items: center;
   gap: 0.55rem;
 }
+.build-stamp {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--accent2);
+  background: #e8f1ff;
+  border: 1px solid #bfd3f5;
+  border-radius: 999px;
+  padding: 0.28rem 0.65rem;
+  white-space: nowrap;
+}
 .status {
   margin: 0;
   font-size: 0.78rem;
@@ -186,23 +197,39 @@ code {
 button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 0.55rem; }
 
-/* Hero */
+/* Hero — full-bleed cool navy band (build 27) */
+.hero-band {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  background:
+    radial-gradient(900px 420px at 12% 10%, rgba(31, 111, 235, 0.28) 0%, transparent 55%),
+    radial-gradient(700px 380px at 88% 80%, rgba(226, 61, 50, 0.18) 0%, transparent 50%),
+    linear-gradient(145deg, #0b1628 0%, #10233f 48%, #16325a 100%);
+  color: var(--hero-ink);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.hero-band .hero-stage {
+  width: min(var(--max), calc(100% - 2.5rem));
+  margin-inline: auto;
+}
 .hero-stage {
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
   gap: 2rem;
   align-items: center;
   min-height: calc(100vh - 4.5rem);
-  padding: 2.5rem 0 2rem;
+  padding: 2.5rem 0 2.6rem;
   animation: rise 480ms ease both;
 }
 .brand-lockup {
   margin: 0 0 0.7rem;
-  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-size: clamp(2.6rem, 5.4vw, 3.9rem);
   font-weight: 800;
-  letter-spacing: 0.04em;
-  color: var(--accent);
+  letter-spacing: 0.06em;
+  color: #ff6b61;
   line-height: 1;
+  text-shadow: 0 8px 28px rgba(226, 61, 50, 0.25);
 }
 .hero-copy h1 {
   margin: 0 0 0.85rem;
@@ -210,8 +237,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
   line-height: 1.12;
   letter-spacing: -0.03em;
   font-weight: 800;
-  color: var(--ink);
-  max-width: 16ch;
+  color: #ffffff;
+  max-width: 18ch;
+}
+.hero-band .lede {
+  color: rgba(244, 247, 251, 0.78);
 }
 .lede {
   margin: 0;
@@ -222,6 +252,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
   font-size: 1.05rem;
 }
 .actions { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1.35rem; }
+.hero-band .btn.secondary {
+  background: transparent;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.hero-band .btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
 .hero-media {
   animation: floatIn 760ms 80ms ease both;
 }
@@ -230,11 +268,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 }
 .flow-board {
   position: relative;
-  background: #ffffff;
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 20px;
   padding: 2.4rem 1.4rem 1.6rem;
-  box-shadow: var(--shadow);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
   min-height: 280px;
   display: grid;
   align-content: center;
@@ -741,6 +780,7 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 640px) {
   .shell { width: min(var(--max), calc(100% - 1.4rem)); }
   .header-meta .btn { display: none; }
+  .build-stamp { display: none; }
   .brand-lockup { font-size: 2.1rem; }
 }
 
