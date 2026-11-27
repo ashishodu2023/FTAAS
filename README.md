@@ -77,9 +77,10 @@ Two parts. The Python gateway (`http://127.0.0.1:8080`, and the Railway service 
 ```bash
 cd web && npm start
 # FTAAS_GATEWAY_URL=http://127.0.0.1:8080  FTAAS_WEB_PORT=3000
+# If 3000 is busy: npm run start:alt  →  http://127.0.0.1:3001
 ```
 
-Open http://127.0.0.1:3000. Pages: `/`, `/pipeline`, `/catalog`, `/workbench`, `/scope`. The site does not train; creating a job from the workbench starts a real run on the gateway.
+Open http://127.0.0.1:3000 (or `:3001` with `npm run start:alt`). Pages: `/`, `/pipeline`, `/catalog`, `/workbench`, `/scope`. The site does not train; creating a job from the workbench starts a real run on the gateway.
 
 ## SDK
 
