@@ -32,7 +32,7 @@ export function layout({ title, current, main, pageClass = "" }) {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=build27" />
+  <link rel="stylesheet" href="/static/styles.css?v=build28" />
 </head>
 <body class="${escapeHtml(pageClass)}">
   <a class="skip" href="#content">Skip to content</a>
@@ -44,7 +44,6 @@ export function layout({ title, current, main, pageClass = "" }) {
       </a>
       <nav class="nav" aria-label="Primary">${links}</nav>
       <div class="header-meta">
-        <span class="build-stamp" title="Product site build marker">UI build 27</span>
         <p class="status" id="gateway-pill" role="status">Checking gateway…</p>
         <a class="btn compact secondary" href="/workbench">Start</a>
       </div>
@@ -64,7 +63,7 @@ export function layout({ title, current, main, pageClass = "" }) {
       </div>
     </div>
   </footer>
-  <script src="/static/site.js?v=build27" defer></script>
+  <script src="/static/site.js?v=build28" defer></script>
 </body>
 </html>`;
 }

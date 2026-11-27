@@ -403,7 +403,7 @@ export function workbenchPage(boot) {
       </div>
     </div>
     <script id="boot" type="application/json">${bootJson}</script>
-    <script src="/static/workbench.js?v=build27" defer></script>
+    <script src="/static/workbench.js?v=build28" defer></script>
     `,
     "page-workbench",
   );
