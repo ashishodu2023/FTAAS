@@ -19,6 +19,19 @@ const PORT = Number(process.env.PORT || process.env.FTAAS_WEB_PORT || 3000);
 const GATEWAY = (process.env.FTAAS_GATEWAY_URL || "http://127.0.0.1:8080").replace(/\/$/, "");
 const API_TOKEN = (process.env.FTAAS_API_TOKEN || "").trim();
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const gatewayHost = (() => {
+  try {
+    return new URL(GATEWAY).hostname;
+  } catch {
+    return "";
+  }
+})();
+const gatewayIsLocal = gatewayHost === "127.0.0.1" || gatewayHost === "localhost";
+// Public deploys must set FTAAS_API_TOKEN. Localhost stays open for demos unless FTAAS_REQUIRE_AUTH=1.
+const AUTH_REQUIRED =
+  process.env.FTAAS_REQUIRE_AUTH === "1" ||
+  (Boolean(API_TOKEN) && process.env.FTAAS_ALLOW_OPEN_PROXY !== "1") ||
+  (!gatewayIsLocal && process.env.FTAAS_ALLOW_OPEN_PROXY !== "1");
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -75,12 +88,28 @@ function serveStatic(res, pathname) {
   });
 }
 
-function authorized(req) {
-  if (!API_TOKEN) return true;
-  if (!WRITE_METHODS.has((req.method || "GET").toUpperCase())) return true;
+function bearerToken(req) {
   const header = req.headers.authorization || "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
-  return Boolean(match && match[1] === API_TOKEN);
+  return match ? match[1].trim() : "";
+}
+
+function authorized(req) {
+  if (!AUTH_REQUIRED) return true;
+  if (!API_TOKEN) return false;
+  const presented = bearerToken(req);
+  return Boolean(presented && presented === API_TOKEN);
+}
+
+function isUnsafeDatasetPath(value) {
+  if (typeof value !== "string" || !value.trim()) return true;
+  const p = value.trim();
+  if (p.includes("\0")) return true;
+  // Allow relative paths and gs:// labels; block file/http and absolute FS paths.
+  if (/^(file|https?|ftp):/i.test(p)) return true;
+  if (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("\\\\") || p.startsWith("/")) return true;
+  if (p.includes("..")) return true;
+  return false;
 }
 
 function proxyTimeoutMs(pathname) {
@@ -94,7 +123,10 @@ function proxyTimeoutMs(pathname) {
 function proxy(req, res) {
   if (!authorized(req)) {
     sendJson(res, 401, {
-      detail: "Authorization required. Set Authorization: Bearer <FTAAS_API_TOKEN>.",
+      detail:
+        AUTH_REQUIRED && !API_TOKEN
+          ? "Server misconfigured: FTAAS_API_TOKEN is required for a public gateway proxy."
+          : "Authorization required. Set Authorization: Bearer <FTAAS_API_TOKEN>.",
     });
     return;
   }
@@ -114,37 +146,83 @@ function proxy(req, res) {
     return;
   }
 
-  const headers = { accept: req.headers.accept || "application/json" };
-  if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
-  if (req.headers["content-length"]) headers["content-length"] = req.headers["content-length"];
-  if (API_TOKEN) headers.authorization = `Bearer ${API_TOKEN}`;
-  else if (req.headers.authorization) headers.authorization = req.headers.authorization;
+  const method = (req.method || "GET").toUpperCase();
+  const maxBody = Number(process.env.FTAAS_PROXY_MAX_BODY || 1_048_576); // 1 MiB
+  const declared = Number(req.headers["content-length"] || 0);
+  if (declared > maxBody) {
+    sendJson(res, 413, { detail: `Request body too large (max ${maxBody} bytes).` });
+    return;
+  }
 
-  const transport = dest.protocol === "https:" ? https : http;
-  const timeout = proxyTimeoutMs(dest.pathname);
-  let settled = false;
-
-  const preq = transport.request(
-    dest,
-    { method: req.method, headers, timeout },
-    (pres) => {
-      const out = { ...pres.headers, "cache-control": "no-store" };
-      res.writeHead(pres.statusCode || 502, out);
-      pres.pipe(res);
-    },
-  );
-  preq.on("timeout", () => {
-    preq.destroy(new Error("Gateway request timed out"));
+  const chunks = [];
+  let size = 0;
+  let tooLarge = false;
+  req.on("data", (chunk) => {
+    if (tooLarge) return;
+    size += chunk.length;
+    if (size > maxBody) {
+      tooLarge = true;
+      chunks.length = 0;
+      return;
+    }
+    chunks.push(chunk);
   });
-  preq.on("error", (err) => {
-    if (settled || res.headersSent) return;
-    settled = true;
-    sendJson(res, 502, {
-      detail: `FTAAS gateway unreachable at ${GATEWAY}${err?.message ? ` (${err.message})` : ""}`,
+  req.on("end", () => {
+    if (tooLarge) {
+      sendJson(res, 413, { detail: `Request body too large (max ${maxBody} bytes).` });
+      return;
+    }
+    const bodyBuf = Buffer.concat(chunks);
+    if (WRITE_METHODS.has(method) && bodyBuf.length) {
+      try {
+        const payload = JSON.parse(bodyBuf.toString("utf8"));
+        const pathValue =
+          payload?.gcs_path ?? payload?.path ?? payload?.dataset_path ?? payload?.uri;
+        if (pathValue != null && isUnsafeDatasetPath(String(pathValue))) {
+          sendJson(res, 400, {
+            detail:
+              "Dataset path must be a relative path under the gateway data root (no absolute, file://, or .. paths).",
+          });
+          return;
+        }
+      } catch {
+        // Non-JSON bodies pass through unchanged.
+      }
+    }
+
+    const headers = { accept: req.headers.accept || "application/json" };
+    if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
+    if (bodyBuf.length) headers["content-length"] = String(bodyBuf.length);
+    if (API_TOKEN) headers.authorization = `Bearer ${API_TOKEN}`;
+    else if (req.headers.authorization) headers.authorization = req.headers.authorization;
+
+    const transport = dest.protocol === "https:" ? https : http;
+    const timeout = proxyTimeoutMs(dest.pathname);
+    let settled = false;
+
+    const preq = transport.request(
+      dest,
+      { method, headers, timeout },
+      (pres) => {
+        const out = { ...pres.headers, "cache-control": "no-store" };
+        res.writeHead(pres.statusCode || 502, out);
+        pres.pipe(res);
+      },
+    );
+    preq.on("timeout", () => {
+      preq.destroy(new Error("Gateway request timed out"));
     });
+    preq.on("error", (err) => {
+      if (settled || res.headersSent) return;
+      settled = true;
+      sendJson(res, 502, {
+        detail: `FTAAS gateway unreachable at ${GATEWAY}${err?.message ? ` (${err.message})` : ""}`,
+      });
+    });
+    req.on("aborted", () => preq.destroy());
+    if (bodyBuf.length) preq.end(bodyBuf);
+    else preq.end();
   });
-  req.on("aborted", () => preq.destroy());
-  req.pipe(preq);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -178,7 +256,7 @@ const server = http.createServer(async (req, res) => {
         gateway: GATEWAY,
         gateway_status: gateway?.status === "ok" ? "ok" : "unreachable",
         console_url: `${GATEWAY}/`,
-        auth_required: Boolean(API_TOKEN),
+        auth_required: AUTH_REQUIRED,
       });
       return;
     }
@@ -229,5 +307,13 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`FTAAS product site http://127.0.0.1:${PORT}`);
   console.log(`Proxying /gateway → ${GATEWAY}`);
-  if (API_TOKEN) console.log("Write proxy auth: FTAAS_API_TOKEN is set");
+  if (AUTH_REQUIRED) {
+    console.log(
+      API_TOKEN
+        ? "Gateway proxy auth: required (FTAAS_API_TOKEN)"
+        : "Gateway proxy auth: REQUIRED but FTAAS_API_TOKEN is missing",
+    );
+  } else {
+    console.log("Gateway proxy auth: open (local demo)");
+  }
 });

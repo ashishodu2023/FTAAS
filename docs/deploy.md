@@ -64,12 +64,40 @@ open https://ftaas.org/
 
 ## 5. Two parts on ftaas.org
 
-This file deploys the **Python gateway** (console + `/v1`) and attaches `ftaas.org` to that service. The Node product site in `web/` is the other part: the pages for the same domain. It does not train.
+This file deploys the **Python gateway** (console + `/v1`). The Node product site in `web/` is the public front door for the same domain. It does not train.
 
-Leave this Railway service where it is until a second host is running `web/`. Build that host from the **repo root**:
+### Cut over the public domain to the Node site
+
+1. Keep the Python gateway on its Railway URL (`https://ftaas-production.up.railway.app`). Prefer **no** public custom domain on the gateway after cutover; if you need one, use a separate host such as `api.ftaas.org`.
+2. Set the **same** `FTAAS_API_TOKEN` on the gateway and on `ftaas-web` in the Railway dashboard. When that variable is set, every gateway `/v1` route requires `Authorization: Bearer …`.
+3. Deploy the product site (uses the `web/` Docker context — not the gateway image):
 
 ```bash
-docker build -f web/Dockerfile -t ftaas-web .
+./scripts/deploy_web_railway.sh
 ```
 
-Point it at `ftaas.org` / `www.ftaas.org`, and set `FTAAS_GATEWAY_URL` to this service (the `*.up.railway.app` URL, or `https://api.ftaas.org`). Set `FTAAS_API_TOKEN` on both the site and the gateway when the site is public — the Node proxy requires `Authorization: Bearer …` on write routes when that token is set. The GPU worker stays private (`FTAAS_TRAINER_URL`, port 8090). Do not put Node into the gateway `Dockerfile`; `railway.toml` builds that image for the API and console. Host `PORT` wins over any local `FTAAS_WEB_PORT`.
+Or manually (from the repo root, after `railway login`):
+
+```bash
+railway add --service ftaas-web
+railway service link ftaas-web
+railway variable set FTAAS_GATEWAY_URL=https://ftaas-production.up.railway.app FTAAS_REQUIRE_AUTH=1
+railway up web --path-as-root --service ftaas-web --detach --ci -m "Deploy ftaas.org product site"
+```
+
+4. In the Railway dashboard, remove `ftaas.org` / `www.ftaas.org` from the **gateway** service, then attach them to `ftaas-web`:
+
+```bash
+railway service link ftaas-web
+railway domain ftaas.org
+railway domain www.ftaas.org
+```
+
+5. Verify:
+
+```bash
+curl -sf https://ftaas.org/health
+# expect service: ftaas-web
+```
+
+The public Node proxy requires `Authorization: Bearer …` for every `/gateway` call. The workbench has a token field (session-only). The GPU worker stays private (`FTAAS_TRAINER_URL`, port 8090). Host `PORT` wins over any local `FTAAS_WEB_PORT`.
