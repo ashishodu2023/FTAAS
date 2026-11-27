@@ -39,13 +39,33 @@
     previewOk: false,
   };
   let pollTimer = null;
+  let refreshSeq = 0;
 
-  function esc(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  function el(tag, attrs = {}, children = []) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value == null || value === false) continue;
+      if (key === "className") node.className = value;
+      else if (key === "text") node.textContent = value;
+      else if (key === "html") node.innerHTML = value;
+      else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2).toLowerCase(), value);
+      else if (key === "dataset") Object.assign(node.dataset, value);
+      else node.setAttribute(key, value === true ? "" : String(value));
+    }
+    for (const child of [].concat(children)) {
+      if (child == null || child === false) continue;
+      node.append(child.nodeType ? child : document.createTextNode(String(child)));
+    }
+    return node;
+  }
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function setMutedList(list, message) {
+    clear(list);
+    list.append(el("li", { className: "muted", text: message }));
   }
 
   function flash(message, isErr = false) {
@@ -81,16 +101,18 @@
   function fillFrameworks() {
     const backends = catalog.backends || {};
     const selected = catalog.defaults?.framework || "transformers";
-    frameworkSel.innerHTML = (catalog.frameworks || ["transformers"]).map((name) => {
+    clear(frameworkSel);
+    for (const name of catalog.frameworks || ["transformers"]) {
       const note = backends[name] ? ` — ${backends[name]}` : "";
-      return `<option value="${esc(name)}"${name === selected ? " selected" : ""}>${esc(name)}${esc(note)}</option>`;
-    }).join("");
+      const option = el("option", { value: name, text: `${name}${note}` });
+      if (name === selected) option.selected = true;
+      frameworkSel.append(option);
+    }
     showFrameworkNote();
   }
 
   function showFrameworkNote() {
-    const note = (catalog.backends || {})[frameworkSel.value] || "";
-    frameworkNote.textContent = note;
+    frameworkNote.textContent = (catalog.backends || {})[frameworkSel.value] || "";
   }
 
   function fillTechniques() {
@@ -102,20 +124,24 @@
       ["Alignment", groups.alignment || []],
     ];
     const preferred = catalog.defaults?.technique || "lora";
-    techSel.innerHTML = order
-      .map(([label, items]) => {
-        const opts = items
-          .map((name) => `<option value="${esc(name)}"${name === preferred ? " selected" : ""}>${esc(name)}</option>`)
-          .join("");
-        return `<optgroup label="${esc(label)}">${opts}</optgroup>`;
-      })
-      .join("");
+    clear(techSel);
+    for (const [label, items] of order) {
+      const group = el("optgroup", { label });
+      for (const name of items || []) {
+        const option = el("option", { value: name, text: name });
+        if (name === preferred) option.selected = true;
+        group.append(option);
+      }
+      techSel.append(group);
+    }
     showTrainHint();
   }
 
   function qloraBlocked() {
     if (techSel.value !== "qlora") return false;
-    const q = catalog.training?.qlora;
+    const train = catalog.training || {};
+    if (String(train.mode || "").toLowerCase() === "remote") return false;
+    const q = train.qlora;
     if (!q) return boot.catalogSource !== "gateway";
     return !q.available && !q.cpu_fallback;
   }
@@ -129,29 +155,40 @@
       return;
     }
     const cuda = device.cuda_available ? "CUDA" : "no CUDA";
-    const qlora = q.available ? "QLoRA ready" : "QLoRA needs GPU+bnb";
-    trainHint.textContent = `Training plane: ${train.mode || "local"} · ${cuda} · ${qlora}`;
+    const mode = train.mode || "local";
+    const qlora =
+      mode === "remote"
+        ? "QLoRA allowed via remote trainer"
+        : q.available
+          ? "QLoRA ready"
+          : "QLoRA needs GPU+bnb";
+    trainHint.textContent = `Training plane: ${mode} · ${cuda} · ${qlora}`;
   }
 
   function renderDatasets() {
+    const current = datasetSel.value;
     if (!state.datasets.length) {
-      listDatasets.innerHTML = `<li class="muted">No datasets yet</li>`;
-      datasetSel.innerHTML = `<option value="">Register a dataset first</option>`;
+      setMutedList(listDatasets, "No datasets yet");
+      clear(datasetSel);
+      datasetSel.append(el("option", { value: "", text: "Register a dataset first" }));
       return;
     }
-    listDatasets.innerHTML = state.datasets
-      .map(
-        (d) =>
-          `<li><code>${esc(d.dataset_id)}:${esc(d.version)}</code> — ${esc(d.name || "dataset")} (${esc(d.num_rows ?? "?")} rows)</li>`,
-      )
-      .join("");
-    const current = datasetSel.value;
-    datasetSel.innerHTML = state.datasets
-      .map(
-        (d) =>
-          `<option value="${esc(d.dataset_id)}" data-version="${esc(d.version)}">${esc(d.name || d.dataset_id)} (${esc(d.dataset_id)}:${esc(d.version)})</option>`,
-      )
-      .join("");
+    clear(listDatasets);
+    clear(datasetSel);
+    for (const d of state.datasets) {
+      listDatasets.append(
+        el("li", {}, [
+          el("code", { text: `${d.dataset_id}:${d.version}` }),
+          document.createTextNode(` — ${d.name || "dataset"} (${d.num_rows ?? "?"} rows)`),
+        ]),
+      );
+      const option = el("option", {
+        value: d.dataset_id,
+        text: `${d.name || d.dataset_id} (${d.dataset_id}:${d.version})`,
+        dataset: { version: String(d.version) },
+      });
+      datasetSel.append(option);
+    }
     if (current) datasetSel.value = current;
     syncVersion();
   }
@@ -162,96 +199,168 @@
   }
 
   function renderModels() {
+    const current = modelSel.value;
     if (!state.models.length) {
-      listModels.innerHTML = `<li class="muted">No models registered</li>`;
-      modelSel.innerHTML = `<option value="">No model yet</option>`;
+      setMutedList(listModels, "No models registered");
+      clear(modelSel);
+      modelSel.append(el("option", { value: "", text: "No model yet" }));
       return;
     }
-    listModels.innerHTML = state.models
-      .map((m) => `<li><code>${esc(m.model_name)}</code> v${esc(m.version)}</li>`)
-      .join("");
-    modelSel.innerHTML = state.models
-      .map((m) => `<option value="${esc(m.model_name)}">${esc(m.model_name)} v${esc(m.version)}</option>`)
-      .join("");
+    clear(listModels);
+    clear(modelSel);
+    for (const m of state.models) {
+      listModels.append(
+        el("li", {}, [
+          el("code", { text: m.model_name }),
+          document.createTextNode(` v${m.version}`),
+        ]),
+      );
+      const value = `${m.model_name}::${m.version}`;
+      modelSel.append(
+        el("option", {
+          value,
+          text: `${m.model_name} v${m.version}`,
+          dataset: { modelName: m.model_name, version: String(m.version) },
+        }),
+      );
+    }
+    if (current && [...modelSel.options].some((o) => o.value === current)) modelSel.value = current;
   }
 
   function renderEndpoints() {
+    const current = endpointSel.value;
     if (!state.endpoints.length) {
-      listEndpoints.innerHTML = `<li class="muted">No endpoints</li>`;
-      endpointSel.innerHTML = `<option value="">Deploy a model first</option>`;
+      setMutedList(listEndpoints, "No endpoints");
+      clear(endpointSel);
+      endpointSel.append(el("option", { value: "", text: "Deploy a model first" }));
       return;
     }
-    listEndpoints.innerHTML = state.endpoints
-      .map(
-        (e) =>
-          `<li><code>${esc(e.endpoint_id)}</code> — ${esc(e.model_name)} @ ${esc(e.inference_framework)}</li>`,
-      )
-      .join("");
-    endpointSel.innerHTML = state.endpoints
-      .map(
-        (e) =>
-          `<option value="${esc(e.endpoint_id)}">${esc(e.endpoint_id)} — ${esc(e.model_name)}</option>`,
-      )
-      .join("");
+    clear(listEndpoints);
+    clear(endpointSel);
+    for (const e of state.endpoints) {
+      listEndpoints.append(
+        el("li", {}, [
+          el("code", { text: e.endpoint_id }),
+          document.createTextNode(` — ${e.model_name} @ ${e.inference_framework}`),
+        ]),
+      );
+      endpointSel.append(
+        el("option", {
+          value: e.endpoint_id,
+          text: `${e.endpoint_id} — ${e.model_name}`,
+        }),
+      );
+    }
+    if (current && [...endpointSel.options].some((o) => o.value === current)) endpointSel.value = current;
   }
 
   function renderJobs() {
+    clear(jobsBody);
     if (!state.jobs.length) {
-      jobsBody.innerHTML = `<tr><td colspan="6" class="muted">No jobs yet</td></tr>`;
+      jobsBody.append(
+        el("tr", {}, [el("td", { colSpan: "6", className: "muted", text: "No jobs yet" })]),
+      );
       return;
     }
-    jobsBody.innerHTML = state.jobs
-      .map((job) => {
-        const progress = job.progress || {};
-        const pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
-        const stop = TERMINAL.has(job.status)
-          ? ""
-          : `<button type="button" class="btn small danger" data-stop="${esc(job.job_id)}">Stop</button>`;
-        return `<tr data-job="${esc(job.job_id)}">
-          <td><code>${esc(job.job_id)}</code></td>
-          <td>${esc(job.model_name)}</td>
-          <td>${esc(job.framework)} / ${esc(job.technique)}</td>
-          <td><span class="pill ${esc(job.status)}">${esc(job.status)}</span></td>
-          <td>
-            <div class="progress"><div class="bar" style="width:${pct}%"></div></div>
-            <small>${esc(progress.message || job.error || "—")}</small>
-          </td>
-          <td class="actions">
-            <button type="button" class="btn small" data-logs="${esc(job.job_id)}">View log</button>
-            ${stop}
-          </td>
-        </tr>`;
-      })
-      .join("");
+    for (const job of state.jobs) {
+      const progress = job.progress || {};
+      const pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+      const actions = el("td", { className: "actions" }, [
+        el("button", {
+          type: "button",
+          className: "btn small",
+          text: "View log",
+          dataset: { logs: job.job_id },
+        }),
+      ]);
+      if (!TERMINAL.has(job.status)) {
+        actions.append(
+          el("button", {
+            type: "button",
+            className: "btn small danger",
+            text: "Stop",
+            dataset: { stop: job.job_id },
+          }),
+        );
+      }
+      const bar = el("div", { className: "bar" });
+      bar.style.width = `${pct}%`;
+      jobsBody.append(
+        el("tr", { dataset: { job: job.job_id } }, [
+          el("td", {}, [el("code", { text: job.job_id })]),
+          el("td", { text: job.model_name }),
+          el("td", { text: `${job.framework} / ${job.technique}` }),
+          el("td", {}, [el("span", { className: `pill ${job.status}`, text: job.status })]),
+          el("td", {}, [
+            el("div", { className: "progress" }, [bar]),
+            el("small", { text: progress.message || job.error || "—" }),
+          ]),
+          actions,
+        ]),
+      );
+    }
   }
 
-  function previewFingerprint() {
-    const path = document.getElementById("inp-gcs-path").value.trim();
-    const format = document.getElementById("sel-ds-format").value;
+  function previewFingerprint(pathValue, formatValue) {
+    const path = pathValue ?? document.getElementById("inp-gcs-path").value.trim();
+    const format = formatValue ?? document.getElementById("sel-ds-format").value;
     return `${path}::${format}`;
   }
 
-  function renderPreview(data) {
+  function renderPreview(data, requestedKey) {
+    if (requestedKey !== previewFingerprint()) {
+      state.previewOk = false;
+      btnRegister.disabled = true;
+      return;
+    }
+    clear(previewBox);
+    previewBox.hidden = false;
+    previewBox.append(
+      el("p", {
+        className: "hint",
+        text: `${data.num_rows ?? "?"} rows · ${data.format || ""}`,
+      }),
+    );
+    for (const warning of data.warnings || []) {
+      previewBox.append(el("p", { className: "hint warn-text", text: warning }));
+    }
     const rows = data.samples || data.rows || [];
     const cols = data.columns || (rows[0] ? Object.keys(rows[0]) : []);
-    const head = cols.map((col) => `<th>${esc(col)}</th>`).join("");
-    const body = (Array.isArray(rows) ? rows : [])
-      .slice(0, 5)
-      .map((row) => `<tr>${cols.map((col) => `<td>${esc(typeof row[col] === "object" ? JSON.stringify(row[col]) : row[col])}</td>`).join("")}</tr>`)
-      .join("");
-    const warnings = (data.warnings || []).map((warning) => `<p class="hint warn-text">${esc(warning)}</p>`).join("");
-    previewBox.hidden = false;
-    previewBox.innerHTML = `<p class="hint">${esc(data.num_rows ?? "?")} rows · ${esc(data.format || "")}</p>
-      ${warnings}
-      <div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body || `<tr><td class="muted">No sample rows</td></tr>`}</tbody></table></div>`;
+    const thead = el("thead", {}, [
+      el(
+        "tr",
+        {},
+        cols.map((col) => el("th", { text: col })),
+      ),
+    ]);
+    const tbody = el("tbody");
+    if (!rows.length) {
+      tbody.append(el("tr", {}, [el("td", { className: "muted", text: "No sample rows" })]));
+    } else {
+      for (const row of rows.slice(0, 5)) {
+        tbody.append(
+          el(
+            "tr",
+            {},
+            cols.map((col) =>
+              el("td", {
+                text: typeof row[col] === "object" ? JSON.stringify(row[col]) : String(row[col] ?? ""),
+              }),
+            ),
+          ),
+        );
+      }
+    }
+    previewBox.append(el("div", { className: "table-scroll" }, [el("table", {}, [thead, tbody])]));
     state.previewOk = true;
-    state.previewKey = previewFingerprint();
+    state.previewKey = requestedKey;
     btnRegister.disabled = false;
   }
 
   async function showLogs(jobId) {
     state.selectedJobId = jobId;
     const data = await api(`/v1/jobs/${encodeURIComponent(jobId)}/logs`);
+    if (state.selectedJobId !== jobId) return;
     const progress = data.progress || {};
     const pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
     logTitle.textContent = `${jobId} · ${data.status || ""}`;
@@ -266,12 +375,14 @@
   }
 
   async function refresh() {
+    const seq = ++refreshSeq;
     const [datasets, jobs, models, endpoints] = await Promise.all([
       api("/v1/datasets"),
       api("/v1/jobs"),
       api("/v1/models"),
       api("/v1/endpoints"),
     ]);
+    if (seq !== refreshSeq) return;
     state.datasets = datasets;
     state.jobs = jobs;
     state.models = models;
@@ -281,7 +392,9 @@
     renderModels();
     renderEndpoints();
     const active = state.jobs.some((job) => !TERMINAL.has(job.status));
-    if (active && !pollTimer) pollTimer = setInterval(() => refresh().catch((err) => flash(err.message, true)), 4000);
+    if (active && !pollTimer) {
+      pollTimer = setInterval(() => refresh().catch((err) => flash(err.message, true)), 4000);
+    }
     if (!active && pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -308,22 +421,24 @@
 
   btnPreview.addEventListener("click", async () => {
     const path = document.getElementById("inp-gcs-path").value.trim();
+    const format = document.getElementById("sel-ds-format").value;
     if (!path) {
       flash("Enter a dataset path to preview", true);
       return;
     }
+    if (path.startsWith("/") || path.startsWith("file://") || /^[A-Za-z]:[\\/]/.test(path)) {
+      flash("Use a path relative to the gateway working directory (for example examples/data/alpaca_sample.jsonl).", true);
+      return;
+    }
+    const requestedKey = previewFingerprint(path, format);
     btnPreview.disabled = true;
     try {
       const data = await api("/v1/datasets/preview", {
         method: "POST",
-        body: JSON.stringify({
-          gcs_path: path,
-          format: document.getElementById("sel-ds-format").value,
-          limit: 5,
-        }),
+        body: JSON.stringify({ gcs_path: path, format, limit: 5 }),
       });
-      renderPreview(data);
-      flash(`Preview ready — ${data.num_rows ?? "?"} rows.`);
+      renderPreview(data, requestedKey);
+      if (state.previewOk) flash(`Preview ready — ${data.num_rows ?? "?"} rows.`);
     } catch (err) {
       state.previewOk = false;
       btnRegister.disabled = true;
@@ -337,6 +452,11 @@
   document.getElementById("form-register").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const fd = new FormData(ev.target);
+    const path = String(fd.get("gcs_path") || "").trim();
+    if (path.startsWith("/") || path.startsWith("file://") || /^[A-Za-z]:[\\/]/.test(path)) {
+      flash("Refuse absolute paths. Use a relative gateway path.", true);
+      return;
+    }
     if (!state.previewOk || state.previewKey !== previewFingerprint()) {
       flash("Preview the dataset first, then register", true);
       return;
@@ -346,7 +466,7 @@
       const ds = await api("/v1/datasets/register", {
         method: "POST",
         body: JSON.stringify({
-          gcs_path: fd.get("gcs_path"),
+          gcs_path: path,
           name: fd.get("name") || null,
           format: fd.get("format") || "jsonl",
         }),
@@ -371,7 +491,10 @@
       return;
     }
     if (qloraBlocked()) {
-      flash("QLoRA needs CUDA and bitsandbytes on this gateway. Use technique lora for a CPU demo, or point FTAAS_TRAIN_MODE=remote at a GPU worker.", true);
+      flash(
+        "QLoRA needs CUDA and bitsandbytes on this gateway. Use technique lora for a CPU demo, or set FTAAS_TRAIN_MODE=remote with a GPU worker.",
+        true,
+      );
       return;
     }
     const button = ev.target.querySelector('button[type="submit"]');
@@ -419,9 +542,7 @@
         await refresh();
         return;
       }
-      if (logs) {
-        await showLogs(logs.dataset.logs);
-      }
+      if (logs) await showLogs(logs.dataset.logs);
     } catch (err) {
       flash(err.message, true);
     }
@@ -429,16 +550,19 @@
 
   document.getElementById("form-deploy").addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    const fd = new FormData(ev.target);
-    if (!fd.get("model_name")) {
+    const selected = modelSel.selectedOptions[0];
+    if (!selected || !selected.value) {
       flash("No model to deploy yet", true);
       return;
     }
+    const modelName = selected.dataset.modelName || selected.value.split("::")[0];
+    const modelVersion = selected.dataset.version || selected.value.split("::")[1] || undefined;
     try {
       const ep = await api("/v1/endpoints", {
         method: "POST",
         body: JSON.stringify({
-          model_name: fd.get("model_name"),
+          model_name: modelName,
+          model_version: modelVersion,
           inference_framework: "transformers",
           use_adapters: true,
         }),
@@ -482,7 +606,8 @@
 
   refresh().catch((err) => {
     flash(err.message, true);
-    listDatasets.innerHTML = `<li class="muted">Gateway offline — start it with ./scripts/start_all.sh</li>`;
-    jobsBody.innerHTML = `<tr><td colspan="6" class="muted">Gateway offline</td></tr>`;
+    setMutedList(listDatasets, "Gateway offline — start it with ./scripts/start_all.sh");
+    clear(jobsBody);
+    jobsBody.append(el("tr", {}, [el("td", { colSpan: "6", className: "muted", text: "Gateway offline" })]));
   });
 })();

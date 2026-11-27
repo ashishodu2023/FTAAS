@@ -66,4 +66,10 @@ open https://ftaas.org/
 
 This file deploys the **Python gateway** (console + `/v1`) and attaches `ftaas.org` to that service. The Node product site in `web/` is the other part: the pages for the same domain. It does not train.
 
-Leave this Railway service where it is until a second host is running `web/`. Build that host from `web/Dockerfile` (it only serves pages). Point it at `ftaas.org` / `www.ftaas.org`, and set its `FTAAS_GATEWAY_URL` to this service (the `*.up.railway.app` URL, or `api.ftaas.org`). The GPU worker stays private (`FTAAS_TRAINER_URL`, port 8090). Do not put Node into the gateway `Dockerfile`; `railway.toml` builds that image for the API and console.
+Leave this Railway service where it is until a second host is running `web/`. Build that host from the **repo root**:
+
+```bash
+docker build -f web/Dockerfile -t ftaas-web .
+```
+
+Point it at `ftaas.org` / `www.ftaas.org`, and set `FTAAS_GATEWAY_URL` to this service (the `*.up.railway.app` URL, or `https://api.ftaas.org`). Set `FTAAS_API_TOKEN` on both the site and the gateway when the site is public — the Node proxy requires `Authorization: Bearer …` on write routes when that token is set. The GPU worker stays private (`FTAAS_TRAINER_URL`, port 8090). Do not put Node into the gateway `Dockerfile`; `railway.toml` builds that image for the API and console. Host `PORT` wins over any local `FTAAS_WEB_PORT`.
