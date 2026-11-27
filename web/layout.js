@@ -27,10 +27,12 @@ export function layout({ title, current, main, pageClass = "" }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)} — FTAAS</title>
   <meta name="description" content="Fine Tuning as a Service — preview, register, LoRA/QLoRA train, and prompt on one shared gateway." />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=pro5" />
+  <link rel="stylesheet" href="/static/styles.css?v=slate-20261126" />
 </head>
 <body class="${escapeHtml(pageClass)}">
   <a class="skip" href="#content">Skip to content</a>
@@ -61,7 +63,7 @@ export function layout({ title, current, main, pageClass = "" }) {
       </div>
     </div>
   </footer>
-  <script src="/static/site.js?v=pro4" defer></script>
+  <script src="/static/site.js?v=slate-20261126" defer></script>
 </body>
 </html>`;
 }
