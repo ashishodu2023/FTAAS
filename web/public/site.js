@@ -1,4 +1,4 @@
-/** Header pill: is the Python gateway answering? */
+/** Shared chrome: gateway status + console link. */
 (() => {
   const pill = document.getElementById("gateway-pill");
   const consoleLink = document.getElementById("console-link");

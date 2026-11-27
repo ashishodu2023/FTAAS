@@ -1,9 +1,9 @@
 const NAV = [
-  ["/", "Product"],
-  ["/pipeline", "Pipeline"],
+  ["/", "Overview"],
+  ["/pipeline", "How it works"],
   ["/catalog", "Catalog"],
   ["/workbench", "Workbench"],
-  ["/scope", "Scope"],
+  ["/scope", "Audience"],
 ];
 
 export function escapeHtml(value) {
@@ -14,7 +14,7 @@ export function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-export function layout({ title, current, main }) {
+export function layout({ title, current, main, pageClass = "" }) {
   const links = NAV.map(([href, label]) => {
     const active = href === current ? ' aria-current="page"' : "";
     return `<a href="${href}"${active}>${label}</a>`;
@@ -26,28 +26,42 @@ export function layout({ title, current, main }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)} — FTAAS</title>
+  <meta name="description" content="Fine Tuning as a Service — preview, register, LoRA/QLoRA train, and prompt on one shared gateway." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=pro3" />
 </head>
-<body>
-  <header class="top">
-    <div class="top-row">
+<body class="${escapeHtml(pageClass)}">
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="site-header">
+    <div class="shell header-inner">
       <a class="brand" href="/">
         <span class="logo">FTAAS</span>
-        <span class="tag">Product site</span>
+        <span class="brand-mark" aria-hidden="true"></span>
       </a>
-      <p class="gateway-pill" id="gateway-pill">Checking gateway…</p>
+      <nav class="nav" aria-label="Primary">${links}</nav>
+      <div class="header-meta">
+        <p class="status" id="gateway-pill" role="status">Checking gateway…</p>
+        <a class="btn compact secondary" href="/workbench">Start</a>
+      </div>
     </div>
-    <nav class="nav">${links}</nav>
   </header>
-  <main>${main}</main>
-  <footer>
-    <span>Fine Tuning as a Service · <a href="https://ftaas.org">ftaas.org</a></span>
-    <span id="console-link"></span>
+  <main id="content" class="shell">${main}</main>
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <div>
+        <p class="footer-brand">FTAAS</p>
+        <p class="footer-copy">Fine Tuning as a Service · <a href="https://ftaas.org">ftaas.org</a></p>
+      </div>
+      <div class="footer-links">
+        <a href="/workbench">Workbench</a>
+        <a href="/catalog">Catalog</a>
+        <span id="console-link"></span>
+      </div>
+    </div>
   </footer>
-  <script src="/static/site.js" defer></script>
+  <script src="/static/site.js?v=pro3" defer></script>
 </body>
 </html>`;
 }
